@@ -45,8 +45,23 @@ def parse_csv_serials(file_content: bytes) -> List[dict]:
 
 
 def get_token(client) -> str:
-    """Get access token from the pycentral client."""
-    return client.token_info['glp']['access_token']
+    """Get access token from the pycentral client.
+    Ensures a token is available by triggering a login if needed.
+    """
+    token_info = client.token_info.get('glp', {})
+    token = token_info.get('access_token')
+    
+    # If no token, or if it might be expired, trigger a minimal command to force refresh
+    if not token or 'client_id' in token_info:
+        try:
+            print("[DEBUG] Triggering token refresh/fetch...")
+            # This call will trigger internal pycentral refresh/login logic
+            client.command("GET", "/platform/workspace/v1/workspaces", "glp", api_params={"limit": 1})
+            token = client.token_info.get('glp', {}).get('access_token')
+        except Exception as e:
+            print(f"[ERROR] Failed to refresh token: {e}")
+            
+    return token or ""
 
 
 def get_auth_headers(token: str, content_type: str = "application/json") -> dict:
@@ -201,13 +216,14 @@ async def bulk_device_info(file: UploadFile = File(...)):
     
     token = get_token(client)
     content = await file.read()
-    serials = parse_csv_serials(content)
+    devices = parse_csv_serials(content)
     
-    if not serials:
+    if not devices:
         raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
     
     results = []
-    for serial in serials:
+    for device_info in devices:
+        serial = device_info['serial']
         device = get_device_by_serial(token, serial)
         if device:
             app_data = device.get('application') or {}
@@ -219,7 +235,7 @@ async def bulk_device_info(file: UploadFile = File(...)):
                     sub_key = sub_data[0].get('key')
                 elif isinstance(sub_data, dict):
                     sub_key = sub_data.get('key')
-            
+            #need to work on the regex matching for better results
             results.append({
                 'serial': serial,
                 'found': True,
@@ -237,7 +253,7 @@ async def bulk_device_info(file: UploadFile = File(...)):
         else:
             results.append({'serial': serial, 'found': False, 'error': 'Device not found'})
     
-    return JSONResponse(content={'total': len(serials), 'results': results})
+    return JSONResponse(content={'total': len(devices), 'results': results})
 
 
 # ============================================================
@@ -265,16 +281,17 @@ async def bulk_assign_subscription(
     
     # Parse CSV
     content = await file.read()
-    serials = parse_csv_serials(content)
+    devices = parse_csv_serials(content)
     
-    if not serials:
+    if not devices:
         raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
     
-    print(f"[DEBUG] Processing {len(serials)} devices for subscription assignment", flush=True)
+    print(f"[DEBUG] Processing {len(devices)} devices for subscription assignment", flush=True)
     
     # Collect device UUIDs
     device_map = {}
-    for serial in serials:
+    for device_info in devices:
+        serial = device_info['serial']
         device = get_device_by_serial(token, serial)
         if device and device.get('id'):
             device_map[serial] = device['id']
@@ -286,7 +303,7 @@ async def bulk_assign_subscription(
         raise HTTPException(status_code=404, detail="No devices found from CSV")
     
     # Assign subscription to each device individually
-    results = {'total': len(serials), 'successful': 0, 'failed': 0, 'details': []}
+    results = {'total': len(devices), 'successful': 0, 'failed': 0, 'details': []}
     url = f"{API_ENDPOINT}/devices/v1beta1/devices"
     
     for serial, device_uuid in device_map.items():
@@ -368,7 +385,8 @@ async def bulk_assign_subscription(
         time.sleep(0.5)
     
     # Add not-found serials
-    for serial in serials:
+    for device_info in devices:
+        serial = device_info['serial']
         if serial not in device_map:
             results['failed'] += 1
             results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found'})
@@ -389,15 +407,16 @@ async def bulk_unassign_subscription(file: UploadFile = File(...)):
     
     token = get_token(client)
     content = await file.read()
-    serials = parse_csv_serials(content)
+    devices = parse_csv_serials(content)
     
-    if not serials:
+    if not devices:
         raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
     
-    results = {'total': len(serials), 'successful': 0, 'failed': 0, 'details': []}
+    results = {'total': len(devices), 'successful': 0, 'failed': 0, 'details': []}
     url = f"{API_ENDPOINT}/devices/v1beta1/devices"
     
-    for serial in serials:
+    for device_info in devices:
+        serial = device_info['serial']
         device = get_device_by_serial(token, serial)
         if not device or not device.get('id'):
             results['failed'] += 1
@@ -455,7 +474,7 @@ async def bulk_unassign_subscription(file: UploadFile = File(...)):
 
 
 # ============================================================
-# TRANSFER DEVICES
+# ADD DEVICES TO APPLICATION
 # ============================================================
 
 @router.post("/transfer-devices")
@@ -471,12 +490,15 @@ async def bulk_transfer_devices(
     
     token = get_token(client)
     content = await file.read()
-    serials = parse_csv_serials(content)
+    devices = parse_csv_serials(content)
     
-    if not serials:
+    if not devices:
         raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
     
-    results = {'total': len(serials), 'successful': 0, 'failed': 0, 'details': []}
+    # Extract only serials for batch processing compatibility
+    serials = [d['serial'] for d in devices]
+    
+    results = {'total': len(devices), 'successful': 0, 'failed': 0, 'details': []}
     url = f"{API_ENDPOINT}/devices/v1beta1/devices"
     
     # Process in batches of 5 (API limit)
@@ -662,9 +684,22 @@ async def transfer_workspaces(
     if not devices_from_csv:
         raise HTTPException(status_code=400, detail="No devices found in CSV")
 
-    results = {'total': len(devices_from_csv), 'successful': 0, 'failed': 0, 'details': []}
+    results = {
+        'total': len(devices_from_csv), 
+        'successful': 0, 
+        'failed': 0, 
+        'details': [],
+        'startTime': None,
+        'estimatedCompletion': None,
+        'averageTimePerDevice': None
+    }
+    
+    import time
+    start_time = time.time()
+    results['startTime'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))
     
     # Process each device
+    processed_count = 0
     for device_info in devices_from_csv:
         serial = device_info['serial']
         mac_from_csv = device_info.get('mac')  # Optional MAC from CSV
@@ -740,7 +775,7 @@ async def transfer_workspaces(
             print(f"[DEBUG] Skipping removal - device {serial} unassigned and ready for destination")
 
             # 4. Add to Destination Inventory
-            # API requires: serial_number and mac_address (both must not be null)
+            # API requires: serialnumber and macaddress (both must not be null)
             
             # Validate required fields
             if not mac_address:
@@ -812,6 +847,23 @@ async def transfer_workspaces(
             results['details'].append({'serial': serial, 'success': False, 'error': f"Exception: {str(e)}"})
             import traceback
             traceback.print_exc()
+        
+        # Update progress and estimate time remaining
+        processed_count += 1
+        elapsed_time = time.time() - start_time
+        avg_time_per_device = elapsed_time / processed_count
+        remaining_devices = len(devices_from_csv) - processed_count
+        estimated_remaining_seconds = avg_time_per_device * remaining_devices
+        
+        results['averageTimePerDevice'] = f"{avg_time_per_device:.2f}s"
+        if remaining_devices > 0:
+            estimated_completion_time = time.time() + estimated_remaining_seconds
+            results['estimatedCompletion'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(estimated_completion_time))
+            print(f"[PROGRESS] {processed_count}/{len(devices_from_csv)} completed. Est. {estimated_remaining_seconds:.0f}s remaining")
+        else:
+            results['estimatedCompletion'] = 'Completed'
+            total_time = time.time() - start_time
+            print(f"[COMPLETE] All {processed_count} devices processed in {total_time:.2f}s")
 
     return JSONResponse(content=results)
 
