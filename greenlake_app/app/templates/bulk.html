@@ -1,0 +1,393 @@
+{% extends "layout.html" %}
+
+{% block title %}Bulk Operations - GreenLake Dashboard{% endblock %}
+{% block page_title %}Bulk Device Operations{% endblock %}
+
+{% block head %}
+<style>
+    .operation-card {
+        margin-bottom: 20px;
+        padding: 20px;
+    }
+
+    .dropzone {
+        border: 2px dashed rgba(255, 255, 255, 0.3);
+        border-radius: 8px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin: 15px 0;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover {
+        border-color: #4cd137;
+        background: rgba(76, 209, 55, 0.1);
+    }
+
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+
+    .results-table th,
+    .results-table td {
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .results-table th {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85em;
+    }
+
+    .status-success {
+        background: #27ae60;
+        color: white;
+    }
+
+    .status-failed {
+        background: #e74c3c;
+        color: white;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 10px 0;
+        display: none;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #4cd137, #27ae60);
+        width: 0%;
+        transition: width 0.3s;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card glass operation-card">
+    <h3>Select Operation</h3>
+    <div class="form-group">
+        <select id="operationType" class="form-control">
+            <option value="device-info">Get Device Information</option>
+            <option value="assign-subscription">Assign Subscription</option>
+            <option value="unassign-subscription">Remove Subscription</option>
+            <option value="transfer-devices">Transfer to Application</option>
+            <option value="transfer-workspaces">Transfer Workspaces (Source -> Dest)</option>
+        </select>
+    </div>
+
+    <!-- CSV Upload -->
+    <div class="dropzone" id="dropzone">
+        <i data-feather="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 10px;"></i>
+        <p>Drop CSV file here or click to browse</p>
+        <p style="font-size: 0.85em; color: rgba(255,255,255,0.6);">CSV must contain "Serial Number" column</p>
+        <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+        <p id="selectedFile" style="color: #4cd137; margin-top: 10px; display: none;"></p>
+    </div>
+
+    <!-- Operation-specific fields -->
+    <div id="subscriptionFields" style="display: none;">
+        <div class="form-group">
+            <label>Subscription Key</label>
+            <input type="text" id="subscriptionKey" class="form-control" placeholder="e.g., ALS-SRV-ADV-1">
+        </div>
+    </div>
+
+    <div id="transferFields" style="display: none;">
+        <div class="form-group">
+            <label>Application ID</label>
+            <select id="applicationId" class="form-control">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Region</label>
+            <input type="text" id="region" class="form-control" placeholder="e.g., us-west">
+        </div>
+    </div>
+
+    <!-- Transfer Workspaces Fields -->
+    <div id="transferWorkspacesFields" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="card glass" style="padding: 15px; background: rgba(255,255,255,0.05);">
+                <h4>Source Workspace</h4>
+                <div class="form-group">
+                    <label>Client ID</label>
+                    <input type="text" id="sourceClientId" class="form-control" placeholder="Source Client ID">
+                </div>
+                <div class="form-group">
+                    <label>Client Secret</label>
+                    <input type="password" id="sourceClientSecret" class="form-control"
+                        placeholder="Source Client Secret">
+                </div>
+            </div>
+            <div class="card glass" style="padding: 15px; background: rgba(255,255,255,0.05);">
+                <h4>Destination Workspace</h4>
+                <div class="form-group">
+                    <label>Client ID</label>
+                    <input type="text" id="destClientId" class="form-control" placeholder="Destination Client ID">
+                </div>
+                <div class="form-group">
+                    <label>Client Secret</label>
+                    <input type="password" id="destClientSecret" class="form-control"
+                        placeholder="Destination Client Secret">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-bar" id="progress">
+        <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <!-- Execute Button -->
+    <button class="btn-primary" id="executeBtn" disabled>
+        <span id="btnText">Upload CSV to Continue</span>
+        <span id="btnSpinner" style="display: none;">Processing...</span>
+    </button>
+</div>
+
+<!-- Results -->
+<div class="card glass" id="resultsCard" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h3>Results</h3>
+        <div>
+            <span id="successCount" style="color: #27ae60; margin-right: 15px;"></span>
+            <span id="failCount" style="color: #e74c3c;"></span>
+            <button class="btn-primary" style="margin-left: 15px; background: #27ae60;" onclick="exportResults()">Export
+                CSV</button>
+        </div>
+    </div>
+
+    <table class="results-table">
+        <thead>
+            <tr>
+                <th>Serial Number</th>
+                <th>Status</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedFile = null;
+    let resultsData = null;
+
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('csvFileInput');
+    const operationType = document.getElementById('operationType');
+    const executeBtn = document.getElementById('executeBtn');
+
+    // File handling
+    dropzone.onclick = () => fileInput.click();
+    fileInput.onchange = () => {
+        if (fileInput.files.length > 0) {
+            selectedFile = fileInput.files[0];
+            document.getElementById('selectedFile').innerText = `✓ ${selectedFile.name}`;
+            document.getElementById('selectedFile').style.display = 'block';
+            document.getElementById('btnText').innerText = 'Execute Operation';
+            executeBtn.disabled = false;
+        }
+    };
+
+    dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('dragover'); };
+    dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+    dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            fileInput.onchange();
+        }
+    };
+
+    // Operation type change
+    operationType.onchange = () => {
+        const op = operationType.value;
+        document.getElementById('subscriptionFields').style.display =
+            op === 'assign-subscription' ? 'block' : 'none';
+        document.getElementById('transferFields').style.display =
+            op === 'transfer-devices' ? 'block' : 'none';
+        document.getElementById('transferWorkspacesFields').style.display =
+            op === 'transfer-workspaces' ? 'block' : 'none';
+    };
+
+    // Load applications for transfer
+    async function loadApplications() {
+        try {
+            const res = await fetch('/api/devices/apps');
+            if (res.ok) {
+                const apps = await res.json();
+                const select = document.getElementById('applicationId');
+                select.innerHTML = '<option value="">Select Application</option>' +
+                    apps.map(app => `<option value="${app.id}">${app.name || app.id}</option>`).join('');
+            }
+        } catch (e) {
+            console.error('Failed to load applications:', e);
+        }
+    }
+    loadApplications();
+
+    // Execute operation
+    executeBtn.onclick = async () => {
+        if (!selectedFile) return;
+
+        const op = operationType.value;
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        if (op === 'assign-subscription') {
+            const key = document.getElementById('subscriptionKey').value;
+            if (!key) {
+                alert('Please enter subscription key');
+                return;
+            }
+            formData.append('subscription_key', key);
+        } else if (op === 'transfer-devices') {
+            const appId = document.getElementById('applicationId').value;
+            const region = document.getElementById('region').value;
+            if (!appId || !region) {
+                alert('Please select application and enter region');
+                return;
+            }
+            formData.append('application_id', appId);
+            formData.append('region', region);
+        } else if (op === 'transfer-workspaces') {
+            const sId = document.getElementById('sourceClientId').value;
+            const sSecret = document.getElementById('sourceClientSecret').value;
+            const dId = document.getElementById('destClientId').value;
+            const dSecret = document.getElementById('destClientSecret').value;
+
+            if (!sId || !sSecret || !dId || !dSecret) {
+                alert('Please enter Source and Destination credentials');
+                return;
+            }
+            formData.append('source_client_id', sId);
+            formData.append('source_client_secret', sSecret);
+            formData.append('dest_client_id', dId);
+            formData.append('dest_client_secret', dSecret);
+        }
+
+        // Show progress
+        executeBtn.disabled = true;
+        document.getElementById('btnText').style.display = 'none';
+        document.getElementById('btnSpinner').style.display = 'inline';
+        document.getElementById('progress').style.display = 'block';
+        document.getElementById('progressFill').style.width = '50%';
+
+        try {
+            const res = await fetch(`/api/bulk/${op}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Operation failed');
+            }
+
+            resultsData = await res.json();
+            displayResults(resultsData);
+            document.getElementById('progressFill').style.width = '100%';
+
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            executeBtn.disabled = false;
+            document.getElementById('btnText').style.display = 'inline';
+            document.getElementById('btnSpinner').style.display = 'none';
+            setTimeout(() => {
+                document.getElementById('progress').style.display = 'none';
+                document.getElementById('progressFill').style.width = '0%';
+            }, 1000);
+        }
+    };
+
+    function displayResults(data) {
+        const resultsCard = document.getElementById('resultsCard');
+        const resultsBody = document.getElementById('resultsBody');
+
+        resultsBody.innerHTML = '';
+        resultsCard.style.display = 'block';
+
+        // Set counts
+        const successful = data.successful || data.results?.filter(r => r.found || r.success).length || 0;
+        const failed = data.failed || data.results?.filter(r => !r.found && !r.success).length || 0;
+
+        document.getElementById('successCount').innerText = `✓ ${successful} successful`;
+        document.getElementById('failCount').innerText = `✗ ${failed} failed`;
+
+        // Display results
+        const items = data.results || data.details || [];
+        items.forEach(item => {
+            const isSuccess = item.found !== undefined ? item.found : item.success;
+            const tr = document.createElement('tr');
+
+            let details = '';
+            if (item.data) {
+                details = `
+                    ID: ${item.data.id?.substring(0, 8)}... | 
+                    Model: ${item.data.model} | 
+                    Status: ${item.data.status}
+                `;
+            } else if (item.error) {
+                details = item.error;
+            } else if (item.status) {
+                details = `HTTP ${item.status}`;
+            }
+
+            tr.innerHTML = `
+                <td>${item.serial}</td>
+                <td><span class="status-badge status-${isSuccess ? 'success' : 'failed'}">
+                    ${isSuccess ? 'Success' : 'Failed'}
+                </span></td>
+                <td style="font-size: 0.9em; color: rgba(255,255,255,0.7);">${details}</td>
+            `;
+            resultsBody.appendChild(tr);
+        });
+
+        feather.replace();
+    }
+
+    function exportResults() {
+        if (!resultsData) return;
+
+        let csv = 'Serial Number,Status,Details\n';
+        const items = resultsData.results || resultsData.details || [];
+
+        items.forEach(item => {
+            const isSuccess = item.found !== undefined ? item.found : item.success;
+            const details = item.error || (item.data ? JSON.stringify(item.data) : '');
+            csv += `"${item.serial}","${isSuccess ? 'Success' : 'Failed'}","${details.replace(/"/g, '""')}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bulk_operation_results_${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+</script>
+{% endblock %}

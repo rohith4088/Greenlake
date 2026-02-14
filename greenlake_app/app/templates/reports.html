@@ -1,0 +1,265 @@
+{% extends "layout.html" %}
+
+{% block title %}User Reports - GreenLake Dashboard{% endblock %}
+
+{% block page_title %}User Reports{% endblock %}
+
+{% block head %}
+<style>
+    .report-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .input-section {
+        padding: 20px;
+    }
+
+    .results-section {
+        margin-top: 20px;
+    }
+
+    .drag-drop-zone {
+        border: 2px dashed rgba(255, 255, 255, 0.2);
+        padding: 40px;
+        text-align: center;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .drag-drop-zone:hover {
+        border-color: rgba(255, 255, 255, 0.5);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+
+    .report-table th,
+    .report-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        vertical-align: top;
+    }
+
+    .report-table th {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .nested-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .nested-list li {
+        margin-bottom: 4px;
+        font-size: 0.9em;
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    .activity-log {
+        max-height: 100px;
+        overflow-y: auto;
+        font-size: 0.85em;
+        color: #aaa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-container">
+    <!-- Input Card -->
+    <div class="card glass input-section">
+        <h3>Generate User Report</h3>
+        <p>Enter email addresses (comma separated) or upload a CSV file.</p>
+
+        <form id="reportForm">
+            <div class="form-group">
+                <label for="emails">Email Addresses</label>
+                <input type="text" id="emails" name="emails" placeholder="user@example.com, admin@example.com">
+            </div>
+
+            <div class="form-group">
+                <label>Or Upload CSV</label>
+                <div class="drag-drop-zone" id="dropZone">
+                    <i data-feather="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 10px;"></i>
+                    <p>Click to select or drag CSV file here</p>
+                    <input type="file" id="csvFile" name="file" accept=".csv" style="display: none;">
+                    <p id="fileName" style="font-size: 0.9em; color: #4cd137; display: none;"></p>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary" id="generateBtn">
+                <span id="btnText">Generate Report</span>
+                <span id="btnSpinner" style="display: none;">Processing...</span>
+            </button>
+        </form>
+    </div>
+
+    <!-- Results Card -->
+    <div class="card glass results-section" id="resultsCard" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3>Report Results</h3>
+            <button class="btn-primary" style="background-color: #27ae60;" onclick="exportToCSV()">Export CSV</button>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Workspaces & Roles</th>
+                        <th>Audit Count (Last 5)</th>
+                        <th>Recent Activity</th>
+                    </tr>
+                </thead>
+                <tbody id="reportTableBody">
+                    <!-- Rows will be injected here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const form = document.getElementById('reportForm');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('csvFile');
+    const fileName = document.getElementById('fileName');
+    let reportData = [];
+
+    // Drag & Drop
+    dropZone.onclick = () => fileInput.click();
+    fileInput.onchange = () => {
+        if (fileInput.files.length > 0) {
+            fileName.innerText = fileInput.files[0].name;
+            fileName.style.display = 'block';
+        }
+    };
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = '#fff'; };
+    dropZone.ondragleave = () => { dropZone.style.borderColor = 'rgba(255,255,255,0.2)'; };
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = 'rgba(255,255,255,0.2)';
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.innerText = fileInput.files[0].name;
+            fileName.style.display = 'block';
+        }
+    };
+
+    // Form Submit
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+
+        const emails = document.getElementById('emails').value;
+        const file = fileInput.files[0];
+
+        if (!emails && !file) {
+            alert("Please provide emails or a CSV file.");
+            return;
+        }
+
+        // Loading State
+        document.getElementById('generateBtn').disabled = true;
+        document.getElementById('btnText').style.display = 'none';
+        document.getElementById('btnSpinner').style.display = 'inline';
+
+        const formData = new FormData();
+        if (emails) formData.append('emails', emails);
+        if (file) formData.append('file', file);
+
+        try {
+            const res = await fetch('/api/reports/generate', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to generate report');
+            }
+
+            reportData = await res.json();
+            renderTable(reportData);
+            document.getElementById('resultsCard').style.display = 'block';
+
+        } catch (error) {
+            alert("Error: " + error.message);
+        } finally {
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('btnText').style.display = 'inline';
+            document.getElementById('btnSpinner').style.display = 'none';
+        }
+    };
+
+    function renderTable(data) {
+        const tbody = document.getElementById('reportTableBody');
+        tbody.innerHTML = '';
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No data found.</td></tr>';
+            return;
+        }
+
+        data.forEach(row => {
+            let workspacesHtml = '<ul class="nested-list">';
+            row.workspaces.forEach(ws => {
+                workspacesHtml += `<li><strong>${ws.name}</strong> (${ws.type})<br><span style="color: #4cd137;">${ws.role}</span></li>`;
+            });
+            workspacesHtml += '</ul>';
+            if (row.workspaces.length === 0) workspacesHtml = '<span style="opacity: 0.5;">No workspaces found</span>';
+
+            let activityHtml = '<div class="activity-log">';
+            row.recent_activity.forEach(act => {
+                activityHtml += `<div>- ${act}</div>`;
+            });
+            activityHtml += '</div>';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.email}</td>
+                <td>${workspacesHtml}</td>
+                <td>${row.audit_trail_count}</td>
+                <td>${activityHtml}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        feather.replace();
+    }
+
+    function exportToCSV() {
+        if (!reportData || reportData.length === 0) return;
+
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Email,Workspace,Role,Workspace Type,Audit Count\n";
+
+        reportData.forEach(row => {
+            if (row.workspaces.length > 0) {
+                row.workspaces.forEach(ws => {
+                    csvContent += `${row.email},"${ws.name}","${ws.role}",${ws.type},${row.audit_trail_count}\n`;
+                });
+            } else {
+                csvContent += `${row.email},N/A,N/A,N/A,${row.audit_trail_count}\n`;
+            }
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "greenlake_user_report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+{% endblock %}

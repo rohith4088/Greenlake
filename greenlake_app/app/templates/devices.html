@@ -1,0 +1,394 @@
+{% extends "layout.html" %}
+
+{% block title %}Devices - GreenLake Dashboard{% endblock %}
+
+{% block page_title %}Device Management{% endblock %}
+
+{% block head %}
+<style>
+    .toolbar {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+    }
+
+    .device-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .device-table th,
+    .device-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .device-table th {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .device-table tr:hover {
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+    }
+
+    .badge-success {
+        background-color: rgba(46, 204, 113, 0.2);
+        color: #2ecc71;
+    }
+
+    .badge-warning {
+        background-color: rgba(241, 196, 15, 0.2);
+        color: #f1c40f;
+    }
+
+    .badge-danger {
+        background-color: rgba(231, 76, 60, 0.2);
+        color: #e74c3c;
+    }
+
+    /* Toast Notification */
+    .toast {
+        visibility: hidden;
+        min-width: 250px;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 4px;
+        padding: 16px;
+        position: fixed;
+        z-index: 1000;
+        left: 50%;
+        bottom: 30px;
+        transform: translateX(-50%);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .toast.show {
+        visibility: visible;
+        animation: fadein 0.5s, fadeout 0.5s 2.5s;
+    }
+
+    @keyframes fadein {
+        from {
+            bottom: 0;
+            opacity: 0;
+        }
+
+        to {
+            bottom: 30px;
+            opacity: 1;
+        }
+    }
+
+    @keyframes fadeout {
+        from {
+            bottom: 30px;
+            opacity: 1;
+        }
+
+        to {
+            bottom: 0;
+            opacity: 0;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card glass">
+    <div class="toolbar">
+        <button class="btn-primary" onclick="openAssignModal()">Assign to App</button>
+        <button class="btn-primary" onclick="unassignDevices()" style="background-color: #e67e22;">Unassign</button>
+        <button class="btn-primary" onclick="openSubModal()">Manage Subscription</button>
+        <button class="btn-primary" onclick="location.reload()" style="background-color: #34495e;">Refresh</button>
+    </div>
+
+    <table class="device-table">
+        <thead>
+            <tr>
+                <th style="width: 40px;"><input type="checkbox" id="selectAll"></th>
+                <th>Serial Number</th>
+                <th>MAC Address</th>
+                <th>Model</th>
+                <th>Application</th>
+                <th>Subscription</th>
+                <th>Sub Start</th>
+                <th>Sub End</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="deviceTableBody">
+            {% for device in devices %}
+            <tr>
+                <td><input type="checkbox" class="device-checkbox" value="{{ device.serialNumber }}"
+                        data-id="{{ device.id }}"></td>
+                <td>{{ device.serialNumber }}</td>
+                <td>{{ device.macAddress }}</td>
+                <td>{{ device.model }}</td>
+                <td>
+                    {% if device.application %}
+                    {{ device.application.name if device.application.name else device.application.id }}
+                    {% else %}
+                    <span style="opacity: 0.5;">Unassigned</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if device.subscription %}
+                    <span class="badge badge-success" title="{{ device.subscription.tier }}">Subscribed</span>
+                    {% else %}
+                    <span class="badge badge-warning">No Sub</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if device.subscription and device.subscription.startsAt %}
+                    {{ device.subscription.startsAt | replace('T', ' ') | truncate(16, True, '') }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if device.subscription and device.subscription.expiresAt %}
+                    {{ device.subscription.expiresAt | replace('T', ' ') | truncate(16, True, '') }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>{{ device.status }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" style="text-align: center;">No devices found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Assign Modal -->
+<div id="assignModal" class="modal">
+    <div class="modal-content glass">
+        <span class="close" onclick="closeModal('assignModal')">&times;</span>
+        <h2>Assign to Application</h2>
+        <form id="assignForm">
+            <div class="form-group">
+                <label for="appSelect">Application</label>
+                <select id="appSelect" name="application_id" required>
+                    <option value="">Loading applications...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="regionSelect">Region</label>
+                <select id="regionSelect" name="region" required>
+                    <option value="us-west">US West</option>
+                    <option value="us-east">US East</option>
+                    <option value="eu-central">EU Central</option>
+                    <option value="eu-west">EU West</option>
+                    <option value="ap-south">AP South</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-primary">Assign Devices</button>
+        </form>
+    </div>
+</div>
+
+<!-- Subscription Modal -->
+<div id="subModal" class="modal">
+    <div class="modal-content glass">
+        <span class="close" onclick="closeModal('subModal')">&times;</span>
+        <h2>Manage Subscriptions</h2>
+        <form id="subForm">
+            <div class="form-group">
+                <label for="subAction">Action</label>
+                <select id="subAction" name="action">
+                    <option value="add">Add Subscription</option>
+                    <option value="remove">Remove Subscription</option>
+                </select>
+            </div>
+            <div class="form-group" id="subKeyGroup">
+                <label for="subKey">Subscription Key</label>
+                <input type="text" id="subKey" name="subscription_key" placeholder="Enter Subscription Key">
+            </div>
+            <button type="submit" class="btn-primary">Apply</button>
+        </form>
+    </div>
+</div>
+
+<div id="toast" class="toast">Action completed successfully</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Select All Logic
+    document.getElementById('selectAll').addEventListener('change', function (e) {
+        document.querySelectorAll('.device-checkbox').forEach(cb => cb.checked = e.target.checked);
+    });
+
+    function getSelectedDevices() {
+        // Prefer Serial for most ops as per my backend assumptions, but let's send both or assume backend handles serials
+        // Backend router uses assign_devices(serial=False), so we need IDs.
+        // Wait, my backend implementation of assign_devices is `serial=False`. 
+        // PyCentral `get_all_devices` returns items with 'id' and 'serialNumber'.
+        // So I should use ID.
+        return Array.from(document.querySelectorAll('.device-checkbox:checked')).map(cb => cb.dataset.id);
+    }
+
+    function showToast(message) {
+        const x = document.getElementById("toast");
+        x.innerText = message;
+        x.className = "toast show";
+        setTimeout(function () { x.className = x.className.replace("show", ""); }, 3000);
+    }
+
+    // Modal Functions
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    async function openAssignModal() {
+        const devices = getSelectedDevices();
+        if (devices.length === 0) {
+            alert('Please select at least one device.');
+            return;
+        }
+        document.getElementById('assignModal').style.display = 'block';
+
+        // Fetch apps if empty
+        const select = document.getElementById('appSelect');
+        if (select.options.length <= 1) {
+            try {
+                const res = await fetch('/api/devices/apps');
+                if (!res.ok) throw new Error('Failed to load apps');
+                const apps = await res.json();
+                select.innerHTML = '<option value="">Select Application</option>';
+                apps.forEach(app => {
+                    select.innerHTML += `<option value="${app.id}">${app.name}</option>`;
+                });
+            } catch (e) {
+                console.error(e);
+                select.innerHTML = '<option value="">Error loading apps</option>';
+            }
+        }
+    }
+
+    function openSubModal() {
+        const devices = getSelectedDevices();
+        if (devices.length === 0) {
+            alert('Please select at least one device.');
+            return;
+        }
+        document.getElementById('subModal').style.display = 'block';
+    }
+
+    // Assign Submit
+    document.getElementById('assignForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const devices = getSelectedDevices();
+        const appId = document.getElementById('appSelect').value;
+        const region = document.getElementById('regionSelect').value;
+
+        try {
+            const res = await fetch('/api/devices/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    devices: devices,
+                    application_id: appId,
+                    region: region
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Assignment failed');
+            }
+            showToast('Devices assigned successfully!');
+            closeModal('assignModal');
+            setTimeout(() => location.reload(), 1500);
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    // Unassign
+    async function unassignDevices() {
+        const devices = getSelectedDevices();
+        if (devices.length === 0) {
+            alert('Please select at least one device.');
+            return;
+        }
+        if (!confirm(`Are you sure you want to unassign ${devices.length} devices?`)) return;
+
+        try {
+            const res = await fetch('/api/devices/unassign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ devices: devices })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Unassign failed');
+            }
+            showToast('Devices unassigned successfully!');
+            setTimeout(() => location.reload(), 1500);
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    // Sub Form Submit
+    document.getElementById('subForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const devices = getSelectedDevices();
+        const action = document.getElementById('subAction').value;
+        const key = document.getElementById('subKey').value;
+
+        if (action === 'add' && !key) {
+            alert('Subscription key is required for adding.');
+            return;
+        }
+
+        const endpoint = action === 'add' ? '/api/devices/subscriptions/add' : '/api/devices/subscriptions/remove';
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    devices: devices,
+                    subscription_key: key
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Subscription update failed');
+            }
+            showToast('Subscription updated successfully!');
+            closeModal('subModal');
+            setTimeout(() => location.reload(), 1500);
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    // Toggle Sub Key Input
+    document.getElementById('subAction').onchange = (e) => {
+        const group = document.getElementById('subKeyGroup');
+        group.style.display = e.target.value === 'add' ? 'block' : 'none';
+        document.getElementById('subKey').required = e.target.value === 'add';
+    };
+
+    // Close modal on click outside
+    window.onclick = (event) => {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}

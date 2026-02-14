@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GreenLake Dashboard{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo">GL</div>
+                <h1>GreenLake</h1>
+            </div>
+            <nav class="nav-menu">
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                    <i data-feather="grid"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/devices" class="nav-item {% if request.path == '/devices' %}active{% endif %}">
+                    <i data-feather="server"></i>
+                    <span>Devices</span>
+                </a>
+                <a href="#" class="nav-item" data-target="subscriptions">
+                    <i data-feather="credit-card"></i>
+                    <span>Subscriptions</span>
+                </a>
+                <a href="/reports" class="nav-item {% if request.path == '/reports' %}active{% endif %}">
+                    <i data-feather="file-text"></i>
+                    <span>Reports</span>
+                </a>
+                <a href="/bulk" class="nav-item {% if request.path == '/bulk' %}active{% endif %}">
+                    <i data-feather="package"></i>
+                    <span>Bulk Operations</span>
+                </a>
+                <a href="#" class="nav-item" data-target="users">
+                    <i data-feather="users"></i>
+                    <span>Users</span>
+                </a>
+            </nav>
+            <div class="settings-link">
+                <a href="#" id="openConfig">
+                    <i data-feather="settings"></i>
+                    <span>Configuration</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h2 id="pageTitle">{% block page_title %}Overview{% endblock %}</h2>
+                <div class="user-profile">
+                    <div class="status-indicator {{ 'on' if configured else 'off' }}"></div>
+                    <span>{{ 'Connected' if configured else 'Not Configured' }}</span>
+                </div>
+            </header>
+
+            <div id="contentArea" class="content-area">
+                {% block content %}
+                <!-- Dynamic Content Loaded Here -->
+                {% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content glass">
+            <span class="close" onclick="closeConfigModal()">&times;</span>
+            <h2>Configuration</h2>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('client-creds')">Client Credentials</button>
+                <button class="tab-btn" onclick="switchTab('token-auth')">Token / Cookie</button>
+            </div>
+
+            <form id="configForm" style="margin-top: 20px;">
+                <input type="hidden" id="authMode" name="mode" value="client_credentials">
+
+                <div id="clientCredsFields">
+                    <div class="form-group">
+                        <label for="client_id">Client ID</label>
+                        <input type="text" id="client_id" name="client_id" placeholder="Enter Client ID">
+                    </div>
+                    <div class="form-group">
+                        <label for="client_secret">Client Secret</label>
+                        <input type="password" id="client_secret" name="client_secret"
+                            placeholder="Enter Client Secret">
+                    </div>
+                </div>
+
+                <div id="tokenAuthFields" style="display: none;">
+                    <div class="form-group">
+                        <label for="access_token">Access Token</label>
+                        <textarea id="access_token" name="access_token" rows="3"
+                            placeholder="Enter Bearer Token"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="cookie">Cookie (Optional)</label>
+                        <textarea id="cookie" name="cookie" rows="2" placeholder="Enter Cookie String"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="url">Base URL</label>
+                        <input type="text" id="url" name="url" placeholder="https://global.api.greenlake.hpe.com"
+                            value="https://global.api.greenlake.hpe.com">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary">Save Configuration</button>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .tab-btn.active {
+            color: #fff;
+            border-bottom: 2px solid #4cd137;
+        }
+
+        textarea {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            resize: vertical;
+        }
+    </style>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        feather.replace();
+
+        // Modal Logic
+        const modal = document.getElementById("configModal");
+        const btn = document.getElementById("openConfig");
+        const span = document.getElementsByClassName("close")[0];
+
+        btn.onclick = function () {
+            modal.style.display = "block";
+            loadConfig();
+        }
+
+        function closeConfigModal() {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (tab === 'client-creds') {
+                document.getElementById('clientCredsFields').style.display = 'block';
+                document.getElementById('tokenAuthFields').style.display = 'none';
+                document.getElementById('authMode').value = 'client_credentials';
+            } else {
+                document.getElementById('clientCredsFields').style.display = 'none';
+                document.getElementById('tokenAuthFields').style.display = 'block';
+                document.getElementById('authMode').value = 'token';
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/auth/config');
+                const data = await res.json();
+
+                if (data.mode === 'token') {
+                    switchTab('token-auth');
+                    // We don't populate secrets back for security, just placeholders if needed
+                    if (data.has_token) document.getElementById('access_token').placeholder = "Token Configured (Hidden)";
+                    if (data.has_cookie) document.getElementById('cookie').placeholder = "Cookie Configured (Hidden)";
+                    if (data.url) document.getElementById('url').value = data.url;
+                } else {
+                    switchTab('client-creds');
+                    if (data.client_id) document.getElementById('client_id').value = data.client_id;
+                    document.getElementById('client_secret').placeholder = "Secret Configured (Hidden)";
+                }
+            } catch (e) {
+                console.error("Failed to load config", e);
+            }
+        }
+
+        document.getElementById('configForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const res = await fetch('/api/auth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    alert('Configuration saved successfully!');
+                    closeConfigModal();
+                    location.reload();
+                } else {
+                    const err = await res.json();
+                    alert('Error: ' + err.detail);
+                }
+            } catch (e) {
+                alert('Failed to save configuration: ' + e.message);
+            }
+        };
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>
