@@ -37,12 +37,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch('/api/devices');
                 if (!res.ok) throw new Error('Failed to fetch devices');
                 const data = await res.json();
-                renderTable(data, ['serialNumber', 'model', 'macAddress', 'status']);
+                renderTable(data, ['serialNumber', 'model', 'status', 'sub_status', 'sub_end']);
             } else if (target === 'subscriptions') {
                 const res = await fetch('/api/subscriptions');
                 if (!res.ok) throw new Error('Failed to fetch subscriptions');
                 const data = await res.json();
-                renderTable(data, ['key', 'tier', 'status', 'end_date']);
+                renderTable(data, ['key', 'tier', 'status', 'start_date', 'end_date']);
             } else if (target === 'users') {
                 const res = await fetch('/api/users');
                 if (!res.ok) throw new Error('Failed to fetch users');

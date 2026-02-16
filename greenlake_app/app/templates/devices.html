@@ -141,7 +141,11 @@
                 </td>
                 <td>
                     {% if device.subscription %}
-                    <span class="badge badge-success" title="{{ device.subscription.tier }}">Subscribed</span>
+                    {% set status = device.subscription.calculatedStatus or 'Active' %}
+                    <span class="badge {% if status == 'Active' %}badge-success{% else %}badge-danger{% endif %}"
+                        title="Status: {{ device.subscription.subscriptionStatus or device.subscription.status or 'N/A' }}{% if device.subscription.skuDescription %}&#10;Description: {{ device.subscription.skuDescription }}{% endif %}&#10;Tier: {{ device.subscription.tier }}">
+                        {{ status }}
+                    </span>
                     {% else %}
                     <span class="badge badge-warning">No Sub</span>
                     {% endif %}

@@ -39,9 +39,68 @@ async def read_devices(request: Request):
     devices = []
     if configured:
         from pycentral.glp.devices import Devices
+        from pycentral.glp.subscriptions import Subscriptions
         try:
             devices_api = Devices()
+            subs_api = Subscriptions()
             devices = devices_api.get_all_devices(client)
+            
+            # Enrich with subscription details
+            try:
+                subscriptions = subs_api.get_all_subscriptions(client)
+                sub_map = {s.get('key'): s for s in subscriptions if s.get('key')}
+                
+                from datetime import datetime
+                now = datetime.utcnow()
+                
+                for device in devices:
+                    dev_sub_data = device.get('subscription')
+                    # Handle both list and dict formats
+                    if isinstance(dev_sub_data, list) and len(dev_sub_data) > 0:
+                        dev_sub = dev_sub_data[0]
+                        device['subscription'] = dev_sub # Ensure it's a dict for templates
+                    elif isinstance(dev_sub_data, dict):
+                        dev_sub = dev_sub_data
+                    else:
+                        continue
+
+                    sub_key = dev_sub.get('key')
+                    if sub_key and sub_key in sub_map:
+                        full_sub = sub_map[sub_key]
+                        dev_sub['startsAt'] = full_sub.get('startsAt')
+                        dev_sub['expiresAt'] = full_sub.get('expiresAt')
+                        dev_sub['status'] = full_sub.get('status')
+                        dev_sub['tier'] = full_sub.get('tier')
+                        # Additional fields
+                        dev_sub['skuDescription'] = full_sub.get('skuDescription', full_sub.get('description', 'N/A'))
+                        dev_sub['subscriptionStatus'] = full_sub.get('subscriptionStatus')
+                        dev_sub['availableQuantity'] = full_sub.get('availableQuantity')
+                        dev_sub['quantity'] = full_sub.get('quantity')
+                        
+                        # Calculated Status logic
+                        expires_at = full_sub.get('expiresAt')
+                        if expires_at:
+                            try:
+                                # Handle common ISO format like 2025-01-01T00:00:00Z
+                                dt_str = expires_at.replace('Z', '')
+                                if 'T' in dt_str:
+                                    exp_dt = datetime.fromisoformat(dt_str)
+                                else:
+                                    # Fallback or simple date
+                                    exp_dt = datetime.strptime(dt_str.split(' ')[0], '%Y-%m-%d')
+                                
+                                if exp_dt < now:
+                                    dev_sub['calculatedStatus'] = 'Expired'
+                                else:
+                                    dev_sub['calculatedStatus'] = 'Active'
+                            except Exception as e:
+                                print(f"Date parse error for {expires_at}: {e}")
+                                dev_sub['calculatedStatus'] = 'Active' # Default to active if can't parse
+                        else:
+                            dev_sub['calculatedStatus'] = 'Active'
+            except Exception as sub_err:
+                print(f"Error enriching subscriptions: {sub_err}")
+                
         except Exception as e:
             print(f"Error fetching devices: {e}")
     return templates.TemplateResponse("devices.html", {"request": request, "configured": configured, "devices": devices})

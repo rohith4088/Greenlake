@@ -231,29 +231,69 @@ async def get_devices():
             # Create a map of subscription_key -> subscription_details
             sub_map = {s.get('key'): s for s in subscriptions if s.get('key')}
             
+            from datetime import datetime
+            now = datetime.utcnow()
+            
             for device in devices:
-                # Device might have 'subscription' object or 'subscriptionId' etc.
-                # Based on previous audit (devices.py), we saw response structure but not full device content.
-                # Usually devices have a 'subscription' key which might be null or contain partial info.
-                # Let's assume device['subscription'] has a 'key' or we match by device serial/id if subs have that info?
-                # Actually, subscriptions are usually assigned to devices. 
-                # Let's check if device has subscription info we can match.
-                # If device has 'subscription_key' or similar.
-                # Checking `devices.html` loop: `{% if device.subscription %}`.
-                # The device object from GLP likely has a subscription object. 
-                # Let's iterate and try to find matching key.
-                
-                dev_sub = device.get('subscription')
-                if dev_sub and isinstance(dev_sub, dict):
-                    # Check if key is in dev_sub or if we need to look it up
-                    sub_key = dev_sub.get('key')
-                    if sub_key and sub_key in sub_map:
-                        full_sub = sub_map[sub_key]
-                        # Merge details we want
-                        dev_sub['startsAt'] = full_sub.get('startsAt')
-                        dev_sub['expiresAt'] = full_sub.get('expiresAt')
-                        dev_sub['status'] = full_sub.get('status')
-                        dev_sub['tier'] = full_sub.get('tier')
+                dev_sub_data = device.get('subscription')
+                # Handle both list and dict formats
+                if isinstance(dev_sub_data, list) and len(dev_sub_data) > 0:
+                    dev_sub = dev_sub_data[0]
+                    device['subscription'] = dev_sub # Ensure it's a dict for templates
+                elif isinstance(dev_sub_data, dict):
+                    dev_sub = dev_sub_data
+                else:
+                    continue
+
+                sub_key = dev_sub.get('key')
+                if sub_key and sub_key in sub_map:
+                    full_sub = sub_map[sub_key]
+                    # Merge details we want
+                    dev_sub['startsAt'] = full_sub.get('startsAt')
+                    dev_sub['expiresAt'] = full_sub.get('expiresAt')
+                    dev_sub['status'] = full_sub.get('status')
+                    dev_sub['tier'] = full_sub.get('tier')
+                    # Additional fields
+                    dev_sub['skuDescription'] = full_sub.get('skuDescription', full_sub.get('description', 'N/A'))
+                    dev_sub['subscriptionStatus'] = full_sub.get('subscriptionStatus')
+                    dev_sub['availableQuantity'] = full_sub.get('availableQuantity')
+                    dev_sub['quantity'] = full_sub.get('quantity')
+                    
+                    # Calculated Status logic
+                    expires_at = full_sub.get('expiresAt')
+                    if expires_at:
+                        try:
+                            # Handle common ISO format like 2025-01-01T00:00:00Z
+                            dt_str = expires_at.replace('Z', '')
+                            if 'T' in dt_str:
+                                exp_dt = datetime.fromisoformat(dt_str)
+                            else:
+                                exp_dt = datetime.strptime(dt_str.split(' ')[0], '%Y-%m-%d')
+                            
+                            if exp_dt < now:
+                                dev_sub['calculatedStatus'] = 'Expired'
+                            else:
+                                dev_sub['calculatedStatus'] = 'Active'
+                        except Exception as e:
+                            print(f"Date parse error for {expires_at}: {e}")
+                            dev_sub['calculatedStatus'] = 'Active'
+                    else:
+                        dev_sub['calculatedStatus'] = 'Active'
+                    
+                    # Flatten for simple JS tables
+                    device['sub_start'] = dev_sub.get('startsAt', 'N/A')
+                    device['sub_end'] = dev_sub.get('expiresAt', 'N/A')
+                    device['sub_status'] = dev_sub.get('calculatedStatus', 'Active')
+                    device['sub_tier'] = dev_sub.get('tier', 'N/A')
+                else:
+                    # Case where subscription key doesn't match sub_map
+                    device['sub_status'] = 'Unknown'
+            else:
+                # No subscription
+                device['sub_status'] = 'No Sub'
+                device['sub_start'] = '-'
+                device['sub_end'] = '-'
+                device['sub_tier'] = '-'
         except Exception as e:
             print(f"Error fetching subscriptions for enrichment: {e}")
             # Continue without enrichment if it fails

@@ -911,18 +911,46 @@ async def debug_subscription_details(keys: str):
                      found = True
 
         if item:
+            from datetime import datetime
+            now = datetime.utcnow()
+            
             status = item.get('status', 'N/A')
             # 'expiresAt' might be unix timestamp or string. 
             # If timestamp, might want to convert, but returning raw is fine for now.
             end_date = item.get('expiresAt', 'N/A') 
+            start_date = item.get('startsAt', 'N/A')
             tier = item.get('tier', 'N/A')
+            sku_description = item.get('skuDescription', item.get('description', 'N/A'))
+            subscription_status = item.get('subscriptionStatus', 'N/A')
+            available_quantity = item.get('availableQuantity', 'N/A')
+            quantity = item.get('quantity', 'N/A')
+            
+            calculated_status = 'Active'
+            if end_date and end_date != 'N/A':
+                try:
+                    dt_str = end_date.replace('Z', '')
+                    if 'T' in dt_str:
+                        exp_dt = datetime.fromisoformat(dt_str)
+                    else:
+                        exp_dt = datetime.strptime(dt_str.split(' ')[0], '%Y-%m-%d')
+                    
+                    if exp_dt < now:
+                        calculated_status = 'Expired'
+                except:
+                    pass
         
         results.append({
             "key": key,
             "id": sub_id,
             "tier": tier,
             "status": status,
+            "calculated_status": calculated_status,
+            "start_date": start_date,
             "end_date": end_date,
+            "sku_description": sku_description,
+            "subscription_status": subscription_status,
+            "available_quantity": available_quantity,
+            "total_quantity": quantity,
             "debug_item": item # Add this to see what's inside
         })
         
