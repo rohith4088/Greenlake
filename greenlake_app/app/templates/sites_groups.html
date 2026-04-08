@@ -1,0 +1,228 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-4">Site & Group Management(BETA)</h1>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <ul class="nav nav-tabs" id="sgTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="bulk-sites-tab" data-toggle="tab" href="#bulk-sites" role="tab"
+                        aria-controls="bulk-sites" aria-selected="true">Bulk Site Creation</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="auto-group-tab" data-toggle="tab" href="#auto-group" role="tab"
+                        aria-controls="auto-group" aria-selected="false">Auto-Grouping</a>
+                </li>
+            </ul>
+
+            <div class="tab-content mt-3" id="sgTabsContent">
+                <!-- Bulk Sites Tab -->
+                <div class="tab-pane fade show active" id="bulk-sites" role="tabpanel" aria-labelledby="bulk-sites-tab">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Upload Sites CSV</h5>
+                            <p class="card-text">Upload a CSV file with columns:
+                                <code>name, address, city, state, country, zipcode</code> (optional:
+                                <code>timezone</code>).</p>
+
+                            <form id="bulkSitesForm">
+                                <div class="form-group">
+                                    <label for="sitesFile">Choose CSV File</label>
+                                    <input type="file" class="form-control-file" id="sitesFile" accept=".csv" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary" id="btnUploadSites">Upload & Create
+                                    Sites</button>
+                            </form>
+
+                            <div id="sitesResult" class="mt-3" style="display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Auto Grouping Tab -->
+                <div class="tab-pane fade" id="auto-group" role="tabpanel" aria-labelledby="auto-group-tab">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Define Auto-Grouping Rules</h5>
+                            <p>Define rules to automatically move devices to specific groups.</p>
+
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <select class="form-control" id="ruleAttr">
+                                        <option value="model">Model</option>
+                                        <option value="serial">Serial Number</option>
+                                        <option value="mac">MAC Address</option>
+                                        <option value="name">Device Name</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <select class="form-control" id="ruleOp">
+                                        <option value="equals">Equals</option>
+                                        <option value="contains">Contains</option>
+                                        <option value="starts_with">Starts With</option>
+                                        <option value="ends_with">Ends With</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" class="form-control" id="ruleVal"
+                                        placeholder="Value (e.g., 6200)">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" class="form-control" id="ruleTarget"
+                                        placeholder="Target Group Name">
+                                </div>
+                                <div class="col-md-1">
+                                    <button class="btn btn-success" id="btnAddRule">+</button>
+                                </div>
+                            </div>
+
+                            <div class="mt-3">
+                                <h6>Current Rules:</h6>
+                                <ul id="rulesList" class="list-group mb-3">
+                                    <!-- Rules will be added here -->
+                                </ul>
+                                <button class="btn btn-primary" id="btnRunAutoGroup" style="display:none;">Run
+                                    Auto-Grouping</button>
+                            </div>
+
+                            <div id="groupResult" class="mt-3" style="display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Bulk Sites Logic ---
+    document.getElementById('bulkSitesForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById('sitesFile');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const btn = document.getElementById('btnUploadSites');
+        const resDiv = document.getElementById('sitesResult');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading...';
+        resDiv.style.display = 'none';
+        resDiv.className = 'mt-3 alert';
+
+        try {
+            const response = await fetch('/api/sites/bulk-create', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                resDiv.className += ' alert-success';
+                resDiv.innerHTML = `<strong>Success!</strong> Processed ${result.total_processed} sites. Success: ${result.success_count}, Failed: ${result.failure_count}`;
+                if (result.errors.length > 0) {
+                    resDiv.innerHTML += '<ul>' + result.errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+                }
+            } else {
+                throw new Error(result.detail || 'Unknown error');
+            }
+        } catch (error) {
+            resDiv.className += ' alert-danger';
+            resDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        } finally {
+            resDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.innerText = 'Upload & Create Sites';
+        }
+    });
+
+    // --- Auto-Grouping Logic ---
+    let rules = [];
+
+    document.getElementById('btnAddRule').addEventListener('click', () => {
+        const attr = document.getElementById('ruleAttr').value;
+        const op = document.getElementById('ruleOp').value;
+        const val = document.getElementById('ruleVal').value.trim();
+        const target = document.getElementById('ruleTarget').value.trim();
+
+        if (!val || !target) {
+            alert("Please enter both Value and Target Group.");
+            return;
+        }
+
+        rules.push({ attribute: attr, operator: op, value: val, target_group: target });
+        renderRules();
+
+        // Clear inputs
+        document.getElementById('ruleVal').value = '';
+        document.getElementById('ruleTarget').value = '';
+    });
+
+    function renderRules() {
+        const list = document.getElementById('rulesList');
+        list.innerHTML = '';
+        rules.forEach((r, index) => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.innerHTML = `
+                ${r.attribute} <strong>${r.operator}</strong> "${r.value}" &rarr; Group: <strong>${r.target_group}</strong>
+                <button class="btn btn-sm btn-danger" onclick="removeRule(${index})">&times;</button>
+            `;
+            list.appendChild(li);
+        });
+
+        document.getElementById('btnRunAutoGroup').style.display = rules.length > 0 ? 'block' : 'none';
+    }
+
+    window.removeRule = (index) => {
+        rules.splice(index, 1);
+        renderRules();
+    };
+
+    document.getElementById('btnRunAutoGroup').addEventListener('click', async () => {
+        const btn = document.getElementById('btnRunAutoGroup');
+        const resDiv = document.getElementById('groupResult');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running...';
+        resDiv.style.display = 'none';
+        resDiv.className = 'mt-3 alert';
+
+        try {
+            const response = await fetch('/api/groups/auto-group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rules: rules })
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                resDiv.className += ' alert-success';
+                let html = `<strong>Done!</strong> Checked ${result.total_devices_checked} devices. Moved ${result.total_moved}.<br>`;
+                html += '<ul>';
+                result.results.forEach(res => {
+                    html += `<li>Moved ${res.count} devices to <strong>${res.group}</strong>: ${res.status}`;
+                    if (res.status !== 'Success') html += ` (${JSON.stringify(res.details)})`;
+                    html += '</li>';
+                });
+                html += '</ul>';
+                resDiv.innerHTML = html;
+            } else {
+                throw new Error(result.detail || 'Unknown error');
+            }
+        } catch (error) {
+            resDiv.className += ' alert-danger';
+            resDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        } finally {
+            resDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.innerText = 'Run Auto-Grouping';
+        }
+    });
+</script>
+{% endblock %}

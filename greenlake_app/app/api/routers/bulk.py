@@ -637,10 +637,80 @@ async def bulk_transfer_devices(
 
 
 # ============================================================
-# TRANSFER WORKSPACES (Source -> Destination)
+# TRANSFER WORKSPACES (Source -> Destination) - ASYNC OPTIMIZED
 # ============================================================
 
+import asyncio
+import httpx
 from pycentral import NewCentralBase
+from pycentral.glp.devices import Devices as GLPDevices
+
+# Semaphore to limit concurrent HTTP requests
+MAX_CONCURRENT_REQUESTS = 10
+semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+async def async_get_token(client):
+    """Asynchronously get token for a client."""
+    # Assuming get_token is synchronous and safe to call directly
+    # If it involves I/O, it should be awaited or run in a thread pool
+    return get_token(client)
+
+async def async_get_device_by_serial(token, serial):
+    """Asynchronously get device details by serial number using OData filter."""
+    async with semaphore:
+        url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+        headers = get_auth_headers(token)
+        params = {"filter": f"serialNumber eq '{serial}'"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                items = data.get('items', [])
+                if items:
+                    return items[0]
+            return None
+
+async def async_patch_device(token, device_id, payload):
+    """Asynchronously patch device (unassign app/subscription)."""
+    async with semaphore:
+        url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+        headers = get_auth_headers(token, "application/merge-patch+json")
+        params = {"id": device_id}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.patch(url, headers=headers, params=params, json=payload)
+            return response
+
+async def async_add_devices_to_inventory(token, category, devices_data):
+    """Asynchronously add devices to inventory bypassing pycentral rate limits.
+    Pycentral artificially caps at 20 devices/minute. This native HTTPX call chunks
+    devices into larger sets to drastically drastically improve performance.
+    """
+    CHUNK_SIZE = 50
+    all_responses = []
+
+    url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+    headers = get_auth_headers(token)
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        for i in range(0, len(devices_data), CHUNK_SIZE):
+            chunk = devices_data[i:i + CHUNK_SIZE]
+            
+            payload = {"network": [], "compute": [], "storage": []}
+            payload[category] = chunk
+            
+            async with semaphore:
+                try:
+                    response = await client.post(url, headers=headers, json=payload)
+                    # Create a dict that mirrors the pycentral response format so existing
+                    # downstream logic parses it seamlessly
+                    if response.status_code in [200, 201, 202]:
+                        all_responses.append({'code': response.status_code, 'msg': 'Add device request accepted...'})
+                    else:
+                        all_responses.append({'code': response.status_code, 'msg': response.text})
+                except Exception as e:
+                    all_responses.append({'code': 500, 'msg': str(e)})
+
+    return all_responses
 
 def create_client(client_id, client_secret):
     """Helper to create a client instance from credentials."""
@@ -664,8 +734,9 @@ async def transfer_workspaces(
     """
     Bulk transfer devices from Source Workspace to Destination Workspace.
     1. Unassign from Source Application (if assigned).
-    2. Remove from Source Inventory.
+    2. Remove from Source Inventory (implicitly by unassigning).
     3. Add to Destination Inventory.
+    Optimized for async concurrent operations.
     """
     # Initialize Clients
     try:
@@ -694,162 +765,128 @@ async def transfer_workspaces(
         'averageTimePerDevice': None
     }
     
-    import time
+    
     start_time = time.time()
     results['startTime'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))
     
-    # Process each device
-    processed_count = 0
+    source_token = await async_get_token(source_client)
+    dest_token = await async_get_token(dest_client)
+
+    # Step 1: Pre-fetch all source device details concurrently
+    print(f"[DEBUG] Pre-fetching details for {len(devices_from_csv)} devices from source...")
+    device_lookup_tasks = []
     for device_info in devices_from_csv:
         serial = device_info['serial']
-        mac_from_csv = device_info.get('mac')  # Optional MAC from CSV
-        
-        try:
-            # 1. Verify Device in Source
-            print(f"[DEBUG] Looking up device {serial} in source workspace")
-            source_device = get_device_by_serial(get_token(source_client), serial)
-            print(f"[DEBUG] Device lookup result: {source_device is not None}")
-            
-            if source_device is None:
-                print(f"[DEBUG] Device {serial} not found in source workspace")
-                results['failed'] += 1
-                results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found in Source'})
-                continue
-            
-            # Extract details needed for adding to destination
-            # Prefer MAC from CSV, fallback to source device
-            print(f"[DEBUG] Device {serial} found: {source_device.get('id', 'NO_ID')}")
-            device_type = source_device.get('deviceType', 'NETWORK').upper() # NETWORK, COMPUTE, STORAGE
-            mac_address = mac_from_csv if mac_from_csv else source_device.get('macAddress')
-            part_number = source_device.get('model') # Often mapped to model/part
-            
-            if not mac_address:
-                print(f"[WARN] Device {serial} has no MAC address in CSV or source device")
+        device_lookup_tasks.append(async_get_device_by_serial(source_token, serial))
+    
+    source_devices_data = await asyncio.gather(*device_lookup_tasks)
+    
+    # Prepare for processing
+    devices_to_process = []
+    for i, device_info in enumerate(devices_from_csv):
+        serial = device_info['serial']
+        mac_from_csv = device_info.get('mac')
+        source_device = source_devices_data[i]
 
-            # 2. Unassign from Source (Application AND Subscription)
-            # NOTE: According to GreenLake API docs, only ONE operation per API call is allowed
-            # We must unassign application first, then subscription in separate calls
-            
+        if source_device is None:
+            results['failed'] += 1
+            results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found in Source'})
+            continue
+        
+        device_type = source_device.get('deviceType', 'NETWORK').upper()
+        mac_address = mac_from_csv if mac_from_csv else source_device.get('macAddress')
+        part_number = source_device.get('model')
+
+        if not mac_address:
+            results['failed'] += 1
+            results['details'].append({
+                'serial': serial, 
+                'success': False, 
+                'error': 'Device has no MAC address (required for adding to inventory)'
+            })
+            continue
+
+        devices_to_process.append({
+            'serial': serial,
+            'mac_address': mac_address,
+            'part_number': part_number,
+            'device_type': device_type,
+            'source_device_id': source_device['id'],
+            'source_app_id': (source_device.get('application') or {}).get('id'),
+            'has_subscription': bool(
+                source_device.get('subscription') and
+                isinstance(source_device.get('subscription'), list) and
+                len(source_device.get('subscription')) > 0
+            )
+        })
+    
+    print(f"[DEBUG] {len(devices_to_process)} devices ready for transfer after pre-fetch and validation.")
+
+    # Step 2 & 3: Unassign from Source and Add to Destination concurrently
+    async def process_single_device(device_data):
+        serial = device_data['serial']
+        source_device_id = device_data['source_device_id']
+        source_app_id = device_data['source_app_id']
+        has_subscription = device_data['has_subscription']
+        mac_address = device_data['mac_address']
+        part_number = device_data['part_number']
+        device_type = device_data['device_type']
+
+        try:
             # 2a. Unassign from Application (if assigned)
-            # Handle case where 'application' field exists but is None
-            app = source_device.get('application')
-            app_id = app.get('id') if app and isinstance(app, dict) else None
+            if source_app_id:
+                print(f"[DEBUG] Unassigning {serial} from Application {source_app_id}")
+                app_unassign_resp = await async_patch_device(source_token, source_device_id, {"application": {"id": None}, "region": None})
+                if app_unassign_resp.status_code not in [200, 202]:
+                    print(f"Warning: Failed to unassign app for {serial}: {app_unassign_resp.text}")
             
-            if app_id:
-                print(f"[DEBUG] Unassigning {serial} from Application {app_id}")
-                url = f"{API_ENDPOINT}/devices/v1beta1/devices"
-                headers = get_auth_headers(get_token(source_client), "application/merge-patch+json")
-                params = {"id": source_device['id']}
-                payload = {"application": {"id": None}, "region": None}
-                
-                resp = requests.patch(url, headers=headers, params=params, json=payload, timeout=30)
-                print(f"[DEBUG] Unassign app response: {resp.status_code}")
-                if resp.status_code not in [200, 202]:
-                    print(f"Warning: Failed to unassign app: {resp.text}")
-                    # Continue anyway - might already be unassigned
-            else:
-                print(f"[DEBUG] Device {serial} has no application assignment")
-            
-            # 2b. Unassign from Subscription (if assigned) - SEPARATE API CALL
-            # Handle case where 'subscription' field exists but is None or empty
-            subs = source_device.get('subscription')
-            has_subscription = subs and isinstance(subs, list) and len(subs) > 0
-            
+            # 2b. Unassign from Subscription (if assigned)
             if has_subscription:
                 print(f"[DEBUG] Unassigning {serial} from Subscription")
-                url = f"{API_ENDPOINT}/devices/v1beta1/devices"
-                headers = get_auth_headers(get_token(source_client), "application/merge-patch+json")
-                params = {"id": source_device['id']}
-                payload = {"subscription": []}  # Empty array to remove subscription
-                
-                resp = requests.patch(url, headers=headers, params=params, json=payload, timeout=30)
-                print(f"[DEBUG] Unassign subscription response: {resp.status_code}")
-                if resp.status_code not in [200, 202]:
-                    print(f"Warning: Failed to unassign subscription: {resp.text}")
-                    # Continue anyway
-            else:
-                print(f"[DEBUG] Device {serial} has no subscription assignment")
-
-            # 3. SKIP REMOVAL - No direct API exists for device deletion
-            # After unassignment, the device should be available for claiming by destination workspace
-            print(f"[DEBUG] Skipping removal - device {serial} unassigned and ready for destination")
-
-            # 4. Add to Destination Inventory
-            # API requires: serialnumber and macaddress (both must not be null)
+                subs_unassign_resp = await async_patch_device(source_token, source_device_id, {"subscription": []})
+                if subs_unassign_resp.status_code not in [200, 202]:
+                    print(f"Warning: Failed to unassign subscription for {serial}: {subs_unassign_resp.text}")
             
-            # Validate required fields
-            if not mac_address:
-                print(f"[ERROR] Device {serial} has no MAC address - cannot add to destination")
-                results['failed'] += 1
-                results['details'].append({
-                    'serial': serial, 
-                    'success': False, 
-                    'error': 'Device has no MAC address (required for adding to inventory)'
-                })
-                continue
-            
-            
-            print(f"[DEBUG] Adding device {serial} (MAC: {mac_address}) to destination")
-            
-            # IMPORTANT: GreenLake API expects camelCase field names, NOT snake_case
-            device_input = {
-                "serialNumber": serial,  # NOT serial_number
-                "macAddress": mac_address  # NOT mac_address
-            }
-            if part_number:
-                device_input["partNumber"] = part_number  # NOT part_number
-            
-            print(f"[DEBUG] Device payload: {device_input}")
-            
-            # Categorize based on type (defaulting to network)
+            # 3. Add to Destination Inventory (prepare data for batching)
             category = "network"
             if "COMPUTE" in device_type: 
                 category = "compute"
             elif "STORAGE" in device_type:
                 category = "storage"
             
-            print(f"[DEBUG] Device type: {device_type}, category: {category}")
+            device_input = {
+                "serialNumber": serial,
+                "macAddress": mac_address
+            }
+            if part_number:
+                device_input["partNumber"] = part_number
             
-            from pycentral.glp.devices import Devices
-            devices_api = Devices()
-            
-            # Add to destination using library method
-            add_resp_list = []
-            if category == "network":
-                add_resp_list = devices_api.add_devices(dest_client, network=[device_input])
-            elif category == "compute":
-                add_resp_list = devices_api.add_devices(dest_client, compute=[device_input])
-            elif category == "storage":
-                add_resp_list = devices_api.add_devices(dest_client, storage=[device_input])
-            
-            # Check response
-            # add_devices returns list of responses
-            success = False
-            error_msg = "Unknown error adding to destination"
-            
-            for resp in add_resp_list:
-                if resp.get('code') in [200, 201, 202]:
-                    success = True
-                    break
-                else:
-                    error_msg = resp.get('msg', str(resp))
-            
-            if success:
-                results['successful'] += 1
-                results['details'].append({'serial': serial, 'success': True, 'status': 'Transferred'})
-            else:
-                results['failed'] += 1
-                results['details'].append({'serial': serial, 'success': False, 'error': f"Failed to add to Destination: {error_msg}"})
-                # Revert? Add back to source? (Complex rollback, for now just report error)
-                
+            return {'serial': serial, 'success': True, 'status': 'Unassigned', 'category': category, 'device_input': device_input}
+
         except Exception as e:
+            return {'serial': serial, 'success': False, 'error': f"Exception during unassignment: {str(e)}"}
+
+    print(f"[DEBUG] Starting concurrent unassignment tasks for {len(devices_to_process)} devices...")
+    unassignment_tasks = [process_single_device(d) for d in devices_to_process]
+    unassignment_results = await asyncio.gather(*unassignment_tasks)
+
+    # Aggregate results and prepare for destination batching
+    destination_batches = {
+        "network": [],
+        "compute": [],
+        "storage": []
+    }
+    processed_count = 0
+    
+    for res in unassignment_results:
+        processed_count += 1
+        if res['success']:
+            destination_batches[res['category']].append(res['device_input'])
+        else:
             results['failed'] += 1
-            results['details'].append({'serial': serial, 'success': False, 'error': f"Exception: {str(e)}"})
-            import traceback
-            traceback.print_exc()
+            results['details'].append({'serial': res['serial'], 'success': False, 'error': res['error']})
         
         # Update progress and estimate time remaining
-        processed_count += 1
         elapsed_time = time.time() - start_time
         avg_time_per_device = elapsed_time / processed_count
         remaining_devices = len(devices_from_csv) - processed_count
@@ -859,21 +896,219 @@ async def transfer_workspaces(
         if remaining_devices > 0:
             estimated_completion_time = time.time() + estimated_remaining_seconds
             results['estimatedCompletion'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(estimated_completion_time))
-            print(f"[PROGRESS] {processed_count}/{len(devices_from_csv)} completed. Est. {estimated_remaining_seconds:.0f}s remaining")
         else:
             results['estimatedCompletion'] = 'Completed'
-            total_time = time.time() - start_time
-            print(f"[COMPLETE] All {processed_count} devices processed in {total_time:.2f}s")
+
+    # Step 4: Add to Destination Inventory in batches
+    # NOTE: pycentral's add_devices returns a list of batch-level response dicts like:
+    #   [{'code': 202, 'msg': 'Add device request accepted...'}]
+    # There is NO per-device serial in the response — it is a single status per API call.
+    # Therefore we map: if any resp in resp_list has code 200/201/202 → all serials in that category = success.
+    print(f"[DEBUG] Adding devices to destination inventory in batches...")
+
+    # Track which categories we are adding, in order, to map responses back to serials
+    ordered_categories = []
+    add_to_dest_tasks = []
+    for category, devices_list in destination_batches.items():
+        if not devices_list:
+            continue
+        ordered_categories.append(category)
+        add_to_dest_tasks.append(async_add_devices_to_inventory(dest_token, category, devices_list))
+
+    destination_add_responses = await asyncio.gather(*add_to_dest_tasks, return_exceptions=True)
+
+    for idx, resp_list in enumerate(destination_add_responses):
+        category = ordered_categories[idx]
+        serials_in_batch = [d['serialNumber'] for d in destination_batches[category]]
+
+        if isinstance(resp_list, Exception):
+            # Exception calling add_devices — all serials in this category failed
+            err = str(resp_list)
+            print(f"[ERROR] Destination add exception for {category}: {err}")
+            for serial in serials_in_batch:
+                results['failed'] += 1
+                results['details'].append({'serial': serial, 'success': False, 'error': f"Failed to add to Destination: {err}"})
+            continue
+
+        # resp_list is a list of batch-level dicts e.g. [{'code': 202, 'msg': '...'}]
+        # A 202 means the whole batch was accepted. Check if ANY call succeeded.
+        batch_ok = any(r.get('code') in [200, 201, 202] for r in resp_list if isinstance(r, dict))
+        error_msg = "; ".join(str(r.get('msg', r)) for r in resp_list if isinstance(r, dict) and r.get('code') not in [200, 201, 202])
+
+        print(f"[DEBUG] Destination batch {category}: batch_ok={batch_ok}, serials={len(serials_in_batch)}")
+
+        for serial in serials_in_batch:
+            if batch_ok:
+                results['successful'] += 1
+                results['details'].append({'serial': serial, 'success': True, 'status': 'Transferred'})
+            else:
+                results['failed'] += 1
+                results['details'].append({'serial': serial, 'success': False, 'error': f"Failed to add to Destination: {error_msg or 'Unknown error'}"})
+
+    total_time = time.time() - start_time
+    print(f"[COMPLETE] All {len(devices_from_csv)} devices processed in {total_time:.2f}s")
 
     return JSONResponse(content=results)
+
+
+# ============================================================
+# TRANSFER SUBSCRIPTION KEYS (Source Workspace -> Destination Workspace)
+# ============================================================
+
+def parse_csv_keys(file_content: bytes) -> list:
+    """Parse CSV and extract subscription keys.
+    Accepts a single-column CSV with header 'Key' or 'SubscriptionKey'.
+    Returns list of key strings.
+    """
+    try:
+        text = file_content.decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(text))
+        keys = []
+        for row in reader:
+            for col in ['Key', 'key', 'SubscriptionKey', 'Subscription Key', 'subscription_key']:
+                if col in row and row[col].strip():
+                    keys.append(row[col].strip())
+                    break
+        return keys
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"CSV parse error: {str(e)}")
+
+
+@router.post("/transfer-subscriptions")
+async def transfer_subscriptions(
+    source_client_id: str = Form(...),
+    source_client_secret: str = Form(...),
+    dest_client_id: str = Form(...),
+    dest_client_secret: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """
+    POC: Transfer subscription keys from Source Workspace to Destination Workspace.
+    
+    Process:
+    1. Authenticate to both workspaces.
+    2. Read subscription keys from CSV.
+    3. Verify each key exists in the Source Workspace.
+    4. Add each verified key to the Destination Workspace via POST /subscriptions.
+
+    NOTE: The GreenLake API does NOT support removing subscriptions via API.
+    This is a claim/copy operation — the source workspace retains the subscriptions.
+    Rate limit: max 5 keys per request, 4 requests/minute.
+    """
+    # Authenticate
+    try:
+        source_client = create_client(source_client_id, source_client_secret)
+        dest_client = create_client(dest_client_id, dest_client_secret)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to initialize clients: {str(e)}")
+
+    # Parse CSV
+    content = await file.read()
+    keys = parse_csv_keys(content)
+
+    if not keys:
+        raise HTTPException(status_code=400, detail="No subscription keys found in CSV. Ensure a column named 'Key' or 'SubscriptionKey' exists.")
+
+    print(f"[INFO] Transfer subscriptions: {len(keys)} keys from CSV", flush=True)
+
+    from pycentral.glp.subscriptions import Subscriptions
+    subs_api = Subscriptions()
+
+    results = {
+        'total': len(keys),
+        'successful': 0,
+        'failed': 0,
+        'details': []
+    }
+
+    # Step 1: Verify keys exist in source workspace
+    print(f"[INFO] Verifying {len(keys)} keys against Source Workspace...", flush=True)
+    source_token = get_token(source_client)
+
+    verified_keys = []
+    for key in keys:
+        try:
+            found, result = subs_api.get_sub_id(source_client, key)
+            if found:
+                print(f"[OK] Key {key} found in source (ID: {result})", flush=True)
+                verified_keys.append({'key': key, 'id': result})
+            else:
+                print(f"[MISS] Key {key} not found in source: {result}", flush=True)
+                results['failed'] += 1
+                results['details'].append({
+                    'key': key,
+                    'success': False,
+                    'error': f"Key not found in Source Workspace: {result}"
+                })
+        except Exception as e:
+            results['failed'] += 1
+            results['details'].append({'key': key, 'success': False, 'error': f"Lookup error: {str(e)}"})
+
+    print(f"[INFO] {len(verified_keys)}/{len(keys)} keys verified in source. Adding to destination...", flush=True)
+
+    if not verified_keys:
+        return JSONResponse(content=results)
+
+    # Step 2: Add verified keys to destination in batches of 5 (API hard limit)
+    BATCH_SIZE = 5
+    RATE_LIMIT_SLEEP = 16  # 4 requests/min = one per 15s; 16s to be safe
+
+    for batch_start in range(0, len(verified_keys), BATCH_SIZE):
+        batch = verified_keys[batch_start:batch_start + BATCH_SIZE]
+        batch_keys = [item['key'] for item in batch]
+
+        print(f"[INFO] Adding batch {batch_start // BATCH_SIZE + 1}: {batch_keys}", flush=True)
+
+        try:
+            subscriptions_payload = [{"key": k} for k in batch_keys]
+            resp = subs_api.add_subscription(dest_client, subscriptions=subscriptions_payload)
+
+            # add_subscription returns the final status dict after polling async progress
+            # A successful response has code 200 or the status from the async check
+            resp_code = resp.get('code') if isinstance(resp, dict) else None
+            resp_msg = resp.get('msg', str(resp)) if isinstance(resp, dict) else str(resp)
+
+            print(f"[DEBUG] Batch response: code={resp_code}, msg={str(resp_msg)[:200]}", flush=True)
+
+            # add_subscription internally polls until done and returns final status
+            # Success indicators: code 200, or msg contains success info
+            batch_ok = resp_code in [200, 201, 202] if resp_code else False
+
+            # Also accept if resp is a list (when > 5 keys internally batched by library)
+            if isinstance(resp, list):
+                batch_ok = any(
+                    (r.get('code') in [200, 201, 202] if isinstance(r, dict) else False)
+                    for r in resp
+                )
+
+            for item in batch:
+                if batch_ok:
+                    results['successful'] += 1
+                    results['details'].append({'key': item['key'], 'success': True, 'status': 'Added to Destination'})
+                else:
+                    results['failed'] += 1
+                    results['details'].append({'key': item['key'], 'success': False, 'error': f"API error: {str(resp_msg)[:200]}"})
+
+        except Exception as e:
+            print(f"[ERROR] Batch {batch_start // BATCH_SIZE + 1} failed: {e}", flush=True)
+            for item in batch:
+                results['failed'] += 1
+                results['details'].append({'key': item['key'], 'success': False, 'error': f"Exception: {str(e)}"})
+
+        # Rate limit: 4 requests/minute max
+        if batch_start + BATCH_SIZE < len(verified_keys):
+            print(f"[RATE_LIMIT] Sleeping {RATE_LIMIT_SLEEP}s before next batch...", flush=True)
+            time.sleep(RATE_LIMIT_SLEEP)
+
+    print(f"[COMPLETE] Subscription transfer done. {results['successful']} ok, {results['failed']} failed.", flush=True)
+    return JSONResponse(content=results)
+
 
 
 @router.get("/debug-subs")
 async def debug_subscription_details(keys: str):
     """Debug endpoint to fetch subscription details for comma-separated keys."""
     client = get_glp_client()
-    if not client:
-        return {"error": "Client not configured"}
     
     from pycentral.glp.subscriptions import Subscriptions
     subs_api = Subscriptions()

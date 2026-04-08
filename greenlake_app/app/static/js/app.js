@@ -89,30 +89,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Config Form Submit
-    configForm.onsubmit = async (e) => {
-        e.preventDefault();
-        const formData = new FormData(configForm);
-        const data = Object.fromEntries(formData.entries());
-
-        try {
-            const res = await fetch('/api/config', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            });
-            if (res.ok) {
-                alert('Configuration saved!');
-                configModal.style.display = 'none';
-                location.reload();
-            } else {
-                alert('Failed to save configuration');
-            }
-        } catch (error) {
-            console.error(error);
-            alert('Error saving configuration');
-        }
-    }
 });

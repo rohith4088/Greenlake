@@ -88,6 +88,7 @@
             <option value="unassign-subscription">Remove Subscription</option>
             <option value="transfer-devices">Transfer to Application</option>
             <option value="transfer-workspaces">Transfer Workspaces (Source -> Dest)</option>
+            <option value="transfer-subscriptions">Transfer Subscriptions (Source -> Dest)</option>
         </select>
     </div>
 
@@ -95,7 +96,7 @@
     <div class="dropzone" id="dropzone">
         <i data-feather="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 10px;"></i>
         <p>Drop CSV file here or click to browse</p>
-        <p style="font-size: 0.85em; color: rgba(255,255,255,0.6);">CSV must contain "Serial Number" column</p>
+        <p style="font-size: 0.85em; color: rgba(255,255,255,0.6);">CSV must contain "Serial Number" (or "Key" for subscriptions) column</p>
         <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
         <p id="selectedFile" style="color: #4cd137; margin-top: 10px; display: none;"></p>
     </div>
@@ -229,7 +230,7 @@
         document.getElementById('transferFields').style.display =
             op === 'transfer-devices' ? 'block' : 'none';
         document.getElementById('transferWorkspacesFields').style.display =
-            op === 'transfer-workspaces' ? 'block' : 'none';
+            (op === 'transfer-workspaces' || op === 'transfer-subscriptions') ? 'block' : 'none';
     };
 
     // Load applications for transfer
@@ -272,7 +273,7 @@
             }
             formData.append('application_id', appId);
             formData.append('region', region);
-        } else if (op === 'transfer-workspaces') {
+        } else if (op === 'transfer-workspaces' || op === 'transfer-subscriptions') {
             const sId = document.getElementById('sourceClientId').value;
             const sSecret = document.getElementById('sourceClientSecret').value;
             const dId = document.getElementById('destClientId').value;

@@ -1,0 +1,1589 @@
+{% extends "layout.html" %}
+
+{% block title %}CCS Manager{% endblock %}
+
+{% block head %}
+<style>
+    /* ── Page Layout ────────────────────────────────────────── */
+    .ccs-grid {
+        display: grid;
+        gap: 24px;
+    }
+
+    /* ── Session Card ───────────────────────────────────────── */
+    .session-card {
+        background: linear-gradient(135deg, rgba(76, 209, 55, 0.08), rgba(0, 168, 255, 0.06));
+        border: 1px solid rgba(76, 209, 55, 0.25);
+        border-radius: 16px;
+        padding: 28px;
+    }
+
+    .session-card h3 {
+        margin: 0 0 20px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #4cd137;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .session-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .session-fields .full-width {
+        grid-column: 1 / -1;
+    }
+
+    .session-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        display: none;
+    }
+
+    .session-status.success {
+        background: rgba(76, 209, 55, 0.12);
+        border: 1px solid rgba(76, 209, 55, 0.3);
+        color: #4cd137;
+        display: flex;
+    }
+
+    .session-status.error {
+        background: rgba(232, 65, 24, 0.12);
+        border: 1px solid rgba(232, 65, 24, 0.3);
+        color: #e84118;
+        display: flex;
+    }
+
+    /* ── Operation Cards ────────────────────────────────────── */
+    .ops-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .op-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 24px;
+        transition: border-color 0.2s;
+    }
+
+    .op-card:hover {
+        border-color: rgba(76, 209, 55, 0.3);
+    }
+
+    .op-card h3 {
+        margin: 0 0 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .op-card p {
+        margin: 0 0 20px;
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.5);
+        line-height: 1.5;
+    }
+
+    .workspace-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    /* ── Form Controls ──────────────────────────────────────── */
+    .form-group {
+        margin-bottom: 14px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.6);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        color: #fff;
+        padding: 10px 12px;
+        font-size: 0.875rem;
+        font-family: inherit;
+        transition: border-color 0.2s;
+        box-sizing: border-box;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: rgba(76, 209, 55, 0.5);
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .form-group textarea {
+        resize: vertical;
+        min-height: 72px;
+    }
+
+    .file-drop {
+        border: 2px dashed rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-bottom: 16px;
+    }
+
+    .file-drop:hover,
+    .file-drop.drag-over {
+        border-color: rgba(76, 209, 55, 0.5);
+        background: rgba(76, 209, 55, 0.05);
+    }
+
+    .file-drop i {
+        font-size: 1.5rem;
+        color: rgba(255, 255, 255, 0.3);
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .file-drop p {
+        margin: 0;
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.4);
+    }
+
+    .file-drop .file-name {
+        color: #4cd137;
+        font-weight: 500;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────── */
+    .btn-primary {
+        background: linear-gradient(135deg, #4cd137, #00b894);
+        border: none;
+        border-radius: 8px;
+        color: #000;
+        font-weight: 600;
+        font-size: 0.875rem;
+        padding: 10px 20px;
+        cursor: pointer;
+        width: 100%;
+        transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .btn-primary:hover {
+        opacity: 0.9;
+    }
+
+    .btn-primary:active {
+        transform: scale(0.98);
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .btn-secondary {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: #fff;
+        font-weight: 500;
+        font-size: 0.875rem;
+        padding: 10px 20px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.14);
+    }
+
+    /* ── Results Table ──────────────────────────────────────── */
+    .results-section {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 24px;
+        display: none;
+    }
+
+    .results-section.visible {
+        display: block;
+    }
+
+    .results-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+
+    .results-header h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .results-stats {
+        display: flex;
+        gap: 12px;
+    }
+
+    .stat-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .stat-badge.success {
+        background: rgba(76, 209, 55, 0.15);
+        color: #4cd137;
+        border: 1px solid rgba(76, 209, 55, 0.3);
+    }
+
+    .stat-badge.fail {
+        background: rgba(232, 65, 24, 0.15);
+        color: #e84118;
+        border: 1px solid rgba(232, 65, 24, 0.3);
+    }
+
+    .stat-badge.total {
+        background: rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+
+    .results-table th {
+        color: rgba(255, 255, 255, 0.5);
+        font-weight: 500;
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .results-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .results-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .status-pill.ok {
+        background: rgba(76, 209, 55, 0.15);
+        color: #4cd137;
+    }
+
+    .status-pill.err {
+        background: rgba(232, 65, 24, 0.15);
+        color: #e84118;
+    }
+
+    /* ── Loading Spinner ────────────────────────────────────── */
+    .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-top-color: #4cd137;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .loading-overlay {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin-top: 10px;
+    }
+
+    .loading-overlay.visible {
+        display: flex;
+    }
+
+    /* ── Workspace List ─────────────────────────────────────── */
+    .ws-list {
+        margin-top: 12px;
+        display: none;
+    }
+
+    .ws-list.visible {
+        display: block;
+    }
+
+    .ws-chip {
+        display: inline-block;
+        background: rgba(0, 168, 255, 0.12);
+        border: 1px solid rgba(0, 168, 255, 0.25);
+        color: rgba(255, 255, 255, 0.8);
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 0.75rem;
+        margin: 3px;
+        font-family: monospace;
+    }
+
+    @media (max-width: 900px) {
+        .ops-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .session-fields {
+            grid-template-columns: 1fr;
+        }
+
+        .workspace-row {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}CCS Manager{% endblock %}
+
+{% block content %}
+<div class="ccs-grid">
+
+    <!-- ── Session Card ──────────────────────────────────────── -->
+    <div class="session-card">
+        <h3>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            CCS-Manager Session
+        </h3>
+
+        <div class="session-fields">
+            <div class="form-group full-width">
+                <label>Bearer Token</label>
+                <textarea id="bearerToken" rows="3"
+                    placeholder="Paste your Bearer token here (without the 'Bearer' prefix)"></textarea>
+            </div>
+            <div class="form-group">
+                <label style="display:flex; justify-content: space-between; align-items: center;">
+                    Cookie
+                    <span style="font-size:0.7rem; color:rgba(0,168,255,0.8); font-weight:400;">
+                        ⓘ DevTools → Network → any request to aquila-user-api → copy <code style="font-size:0.7rem">Cookie:</code> request header
+                    </span>
+                </label>
+                <textarea id="cookieStr" rows="2" placeholder="Must include ccs-csrftoken, ccs-session, ccs-pf-id — copy from DevTools Network tab (see tip above)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Base URL</label>
+                <input type="text" id="baseUrl" value="https://aquila-user-api.common.cloud.hpe.com">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button class="btn-secondary" style="width:auto;" onclick="validateSession()">
+                Validate Session
+            </button>
+            <div class="loading-overlay" id="validateLoader">
+                <div class="spinner"></div> Validating...
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px;">
+            <!-- HAR File Drop -->
+            <div class="file-drop" id="harFileDrop" onclick="document.getElementById('harFile').click()" style="margin:0; padding:16px; border-color:rgba(155, 89, 182, 0.3); background:rgba(155, 89, 182, 0.05); text-align:center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(155, 89, 182, 0.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 6px;">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <h4 style="margin: 0 0 4px; font-size: 0.8rem; color: #fff;">Network HAR File</h4>
+                <p id="harFileLabel" style="margin: 0; font-size: 0.7rem; color:rgba(255,255,255,0.6); line-height: 1.3;">Drop a HAR file from DevTools to auto-extract auth</p>
+                <input type="file" id="harFile" accept=".har" style="display:none" onchange="parseHarFile(this)">
+            </div>
+
+            <!-- Magic Bookmarklet -->
+            <div style="padding: 16px; background: rgba(0,0,0,0.15); border: 1px solid rgba(0, 168, 255, 0.2); border-radius: 8px;">
+                <h4 style="margin: 0 0 4px; font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px;">Magic Bookmark</h4>
+                <p style="margin: 0 0 8px; font-size: 0.7rem; color: rgba(255,255,255,0.6); line-height: 1.3;">
+                    Drag this button to your bookmarks bar. Click it when in GreenLake to load session!
+                </p>
+                <a id="magicBookmarklet" href="#" class="btn-secondary" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-size: 0.7rem; padding: 4px 10px; background: rgba(0, 168, 255, 0.1); border-color: rgba(0, 168, 255, 0.3); color: #00a8ff;" onclick="event.preventDefault(); alert('Drag this link to your bookmarks bar! Do not click it here.');">
+                    Send to CCS Manager
+                </a>
+            </div>
+        </div>
+
+        <div id="sessionStatus" class="session-status" style="margin-top: 16px;"></div>
+        <div class="ws-list" id="wsList"></div>
+    </div>
+
+    <!-- ── Operation Cards ───────────────────────────────────── -->
+    <div class="ops-grid">
+
+        <!-- Transfer Devices -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#4cd137" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+                Transfer Devices
+            </h3>
+            <p>Move devices between workspaces using serial numbers from a CSV file.</p>
+
+            <div class="workspace-row">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Source Workspace ID</label>
+                    <input type="text" id="devSrcWs" placeholder="e.g. a1b2c3d4-...">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Destination Customer ID <span style="opacity:0.5;font-weight:400">(UUID from CCS
+                            portal)</span></label>
+                    <input type="text" id="devDstWs" placeholder="e.g. 5581b87c7ab811ec9b8eb6e766d09539">
+                </div>
+            </div>
+
+            <div class="workspace-row" style="margin-top: 12px;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Folder <span style="opacity:0.5;font-weight:400">(default: 'default')</span></label>
+                    <input type="text" id="devFolder" value="default" placeholder="default">
+                </div>
+            </div>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="devFileDrop" onclick="document.getElementById('devFile').click()">
+                <i data-feather="upload-cloud"></i>
+                <p id="devFileLabel">Click or drag CSV with serial numbers</p>
+                <input type="file" id="devFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'devFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="devTransferBtn" onclick="transferDevices()">
+                Transfer Devices
+            </button>
+            <div class="loading-overlay" id="devLoader" style="justify-content: center;">
+                <div class="spinner"></div> Transferring devices — please wait...
+            </div>
+        </div>
+
+        <!-- Transfer Subscriptions -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#00b894" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                    <line x1="1" y1="10" x2="23" y2="10"></line>
+                </svg>
+                Transfer Subscriptions
+            </h3>
+            <p>Transfer subscription keys between workspaces from a CSV file.</p>
+
+            <div class="workspace-row">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Source Workspace ID</label>
+                    <input type="text" id="subSrcWs" placeholder="e.g. a1b2c3d4-...">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Destination Workspace ID</label>
+                    <input type="text" id="subDstWs" placeholder="e.g. e5f6g7h8-...">
+                </div>
+            </div>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="subFileDrop" onclick="document.getElementById('subFile').click()">
+                <i data-feather="upload-cloud"></i>
+                <p id="subFileLabel">Click or drag CSV with subscription keys</p>
+                <input type="file" id="subFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'subFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="subTransferBtn" onclick="transferSubscriptions()">
+                Transfer Subscriptions
+            </button>
+            <div class="loading-overlay" id="subLoader" style="justify-content: center;">
+                <div class="spinner"></div> Transferring subscriptions — please wait...
+            </div>
+        </div>
+
+        <!-- Query Users -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#0984e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                Query Users
+            </h3>
+            <p>Query users in GreenLake using external search strings or emails from a CSV file (Requires Aquila
+                session).</p>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="usrFileDrop" onclick="document.getElementById('usrFile').click()">
+                <i data-feather="users"></i>
+                <p id="usrFileLabel">Click or drag CSV with emails/Usernames</p>
+                <input type="file" id="usrFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'usrFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="usrQueryBtn" onclick="queryUsers()">
+                Query Users
+            </button>
+            <div class="loading-overlay" id="usrLoader" style="justify-content: center;">
+                <div class="spinner"></div> Querying users — please wait...
+            </div>
+        </div>
+
+        <!-- Query Devices -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#FFC312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                Query Devices
+            </h3>
+            <p>Fetch detailed hardware state, mapped rules, and folders using serials from a CSV file (Requires Aquila
+                session).</p>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="devQueryFileDrop" onclick="document.getElementById('devQueryFile').click()">
+                <i data-feather="server"></i>
+                <p id="devQueryFileLabel">Click or drag CSV with Serial Numbers</p>
+                <input type="file" id="devQueryFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'devQueryFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="devQueryBtn" onclick="queryDevices()">
+                Query Devices
+            </button>
+            <div class="loading-overlay" id="devQueryLoader" style="justify-content: center; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="spinner"></div> 
+                    <span id="devQueryLoaderText" style="font-size: 0.95rem; font-weight: 500;">Querying devices — please wait...</span>
+                </div>
+                <div style="width: 80%; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; height: 8px;">
+                    <div id="devQueryProgressBar" style="width: 0%; height: 100%; background: #007bff; transition: width 0.2s;"></div>
+                </div>
+                <button id="devQueryAbortBtn" class="btn-secondary" style="margin-top: 4px; padding: 4px 12px; font-size: 0.8rem;" onclick="abortQueryDevices()">Abort</button>
+            </div>
+        </div>
+        <!-- Unclaim Devices -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#e84118" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+                Unclaim Devices
+            </h3>
+            <p>Remove devices from a workspace (return to factory) using serial numbers from a CSV file. (Requires Aquila session)</p>
+
+            <div class="workspace-row">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Workspace Customer ID <span style="opacity:0.5;font-weight:400">(UUID)</span></label>
+                    <input type="text" id="unclaimWs" placeholder="e.g. 5581b87c7ab811ec9b8eb6e766d09539">
+                </div>
+            </div>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="unclaimFileDrop" onclick="document.getElementById('unclaimFile').click()">
+                <i data-feather="upload-cloud"></i>
+                <p id="unclaimFileLabel">Click or drag CSV with Serial Numbers</p>
+                <input type="file" id="unclaimFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'unclaimFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="unclaimBtn" onclick="unclaimDevices()" style="background: linear-gradient(135deg, #e84118, #c23616);">
+                Unclaim Devices
+            </button>
+            <div class="loading-overlay" id="unclaimLoader" style="justify-content: center;">
+                <div class="spinner" style="border-top-color: #e84118;"></div> Unclaiming devices — please wait...
+            </div>
+        </div>
+
+        <!-- Claim Devices -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#00d2d3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+                Claim Devices (From Factory)
+            </h3>
+            <p>Move devices from Aruba Factory to a workspace using serial numbers from a CSV file. (Requires Aquila session)</p>
+
+            <div class="workspace-row">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Destination Customer ID <span style="opacity:0.5;font-weight:400">(UUID)</span></label>
+                    <input type="text" id="claimWs" placeholder="e.g. 5581b87c7ab811ec9b8eb6e766d09539">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Folder <span style="opacity:0.5;font-weight:400">(default: 'default')</span></label>
+                    <input type="text" id="claimFolder" value="default" placeholder="default">
+                </div>
+            </div>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="claimFileDrop" onclick="document.getElementById('claimFile').click()">
+                <i data-feather="download-cloud"></i>
+                <p id="claimFileLabel">Click or drag CSV with Serial Numbers</p>
+                <input type="file" id="claimFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'claimFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="claimBtn" onclick="claimDevices()" style="background: linear-gradient(135deg, #00d2d3, #0abde3);">
+                Claim Devices
+            </button>
+            <div class="loading-overlay" id="claimLoader" style="justify-content: center;">
+                <div class="spinner" style="border-top-color: #00d2d3;"></div> Claiming devices — please wait...
+            </div>
+        </div>
+
+        <!-- Query Orders -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#ff6b81" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                Query Orders
+            </h3>
+            <p>Fetch subscription keys and SKUs using Order Numbers from a CSV file (Requires Aquila session).</p>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="ordFileDrop" onclick="document.getElementById('ordFile').click()">
+                <i data-feather="file-text"></i>
+                <p id="ordFileLabel">Click or drag CSV with Order Numbers</p>
+                <input type="file" id="ordFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'ordFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="ordQueryBtn" onclick="queryOrders()" style="background: linear-gradient(135deg, #ff6b81, #ff4757);">
+                Query Orders
+            </button>
+            <div class="loading-overlay" id="ordLoader" style="justify-content: center;">
+                <div class="spinner" style="border-top-color: #ff6b81;"></div> Querying orders — please wait...
+            </div>
+        </div>
+        <!-- Delete Users -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#c23616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7" r="4"></circle>
+                    <line x1="18" y1="8" x2="23" y2="13"></line>
+                    <line x1="23" y1="8" x2="18" y2="13"></line>
+                </svg>
+                Delete Users
+            </h3>
+            <p>Delete (disassociate) users from a workspace using emails/usernames from a CSV file (Requires Aquila session).</p>
+
+            <div class="workspace-row">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Workspace Customer ID <span style="opacity:0.5;font-weight:400">(Optional - Leave blank to delete from ALL workspaces)</span></label>
+                    <input type="text" id="delUserWs" placeholder="e.g. 5581b87c7ab811ec9b8eb6e766d09539">
+                </div>
+            </div>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="delUserFileDrop" onclick="document.getElementById('delUserFile').click()">
+                <i data-feather="user-x"></i>
+                <p id="delUserFileLabel">Click or drag CSV with emails/Usernames</p>
+                <input type="file" id="delUserFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'delUserFileLabel')">
+            </div>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="delUserSkipFileDrop" onclick="document.getElementById('delUserSkipFile').click()">
+                <i data-feather="file-minus"></i>
+                <p id="delUserSkipFileLabel">Optional: CSV with Workspaces to Skip</p>
+                <input type="file" id="delUserSkipFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'delUserSkipFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="delUserBtn" onclick="deleteUsers()" style="background: linear-gradient(135deg, #e84118, #c23616);">
+                Delete Users
+            </button>
+            <div class="loading-overlay" id="delUserLoader" style="justify-content: center; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="spinner" style="border-top-color: #e84118;"></div> 
+                    <span id="delUserLoaderText" style="font-size: 0.95rem; font-weight: 500;">Deleting users — please wait...</span>
+                </div>
+                <div style="width: 80%; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; height: 8px;">
+                    <div id="delUserProgressBar" style="width: 0%; height: 100%; background: #e84118; transition: width 0.2s;"></div>
+                </div>
+                <button id="delUserAbortBtn" class="btn-secondary" style="margin-top: 4px; padding: 4px 12px; font-size: 0.8rem; border-color: #e84118; color: #e84118;" onclick="abortDeleteUsers()">Abort</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Results ───────────────────────────────────────────── -->
+    <div class="results-section" id="resultsSection">
+        <div class="results-header">
+            <h3 id="resultsTitle">Results</h3>
+            <div class="results-stats" style="align-items: center;">
+                <span class="stat-badge total" id="statTime" style="background: rgba(10, 189, 227, 0.1); color: #0abde3; border-color: rgba(10, 189, 227, 0.3); display: none;"></span>
+                <span class="stat-badge total" id="statTotal">Total: 0</span>
+                <span class="stat-badge success" id="statSuccess">✓ 0</span>
+                <span class="stat-badge fail" id="statFail">✗ 0</span>
+                <button id="exportCsvBtn" class="btn-secondary"
+                    style="margin-left: 8px; padding: 4px 12px; font-size: 0.78rem; display: none;"
+                    onclick="exportResultsCsv()">⬇ Export CSV</button>
+            </div>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th id="colIdentifier">Identifier</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── On Page Load / Persistence ────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        // Generate Magic Bookmarklet Dynamic Link
+        const targetUrl = window.location.origin + window.location.pathname;
+        const bmkCode = `javascript:(function(){
+            function getCcsCookies(ck){var p=(ck||'').split(';');var res=[];for(var i=0;i<p.length;i++){var s=p[i].trim();if(s.toLowerCase().startsWith('ccs-')||s.toLowerCase().startsWith('hpe-')||s.toLowerCase().indexOf('session')!==-1||s.toLowerCase().indexOf('tok')!==-1){res.push(s);}}return res.join('; ');}
+            function launch(token,csrf){
+                var u=window.location.origin;if(u.indexOf('common.cloud.hpe.com')!==-1&&u.indexOf('aquila-user-api')===-1){u='https://aquila-user-api.common.cloud.hpe.com';}
+                var baseCk=getCcsCookies(document.cookie);
+                if(csrf&&baseCk.indexOf('ccs-csrftoken')===-1){baseCk='ccs-csrftoken='+csrf+'; '+baseCk;}
+                var tgt='${targetUrl}?bearer='+encodeURIComponent(token)+'&cookie='+encodeURIComponent(baseCk)+'&baseUrl='+encodeURIComponent(u);
+                window.open(tgt,'_blank');
+            }
+            var b='';try{b=localStorage.getItem('ccs-access-token')||sessionStorage.getItem('access_token')||localStorage.getItem('access_token')||'';}catch(e){}
+            if(b&&b.startsWith('"'))try{b=JSON.parse(b);}catch(e){}
+            if(b){launch(b,'');return;}
+            alert('Listening for network requests... Please click a link or refresh data on GreenLake to capture the session.');
+            var origOpen=window.XMLHttpRequest.prototype.open;var origSetHdr=window.XMLHttpRequest.prototype.setRequestHeader;var origSend=window.XMLHttpRequest.prototype.send;var origFetch=window.fetch;var captured=false;
+            function restore(){window.XMLHttpRequest.prototype.open=origOpen;window.XMLHttpRequest.prototype.setRequestHeader=origSetHdr;window.XMLHttpRequest.prototype.send=origSend;window.fetch=origFetch;}
+            window.XMLHttpRequest.prototype.open=function(m,u){this._rH={};return origOpen.apply(this,arguments);};
+            window.XMLHttpRequest.prototype.setRequestHeader=function(h,v){this._rH[h.toLowerCase()]=v;return origSetHdr.apply(this,arguments);};
+            window.XMLHttpRequest.prototype.send=function(){
+                var self=this;var auth=(this._rH['authorization']||'');
+                if(!captured&&auth.toLowerCase().startsWith('bearer ')){
+                    var token=auth.substring(7);
+                    self.addEventListener('readystatechange',function(){
+                        if(self.readyState===4&&!captured){captured=true;restore();
+                            var csrf='';try{csrf=self.getResponseHeader('x-csrf-token')||'';}catch(e){}
+                            launch(token,csrf);}});
+                }
+                return origSend.apply(this,arguments);
+            };
+            window.fetch=function(input,init){
+                var hdrs=init&&init.headers;var auth='';
+                if(hdrs){if(typeof hdrs.get==='function'){auth=hdrs.get('authorization')||'';}else{auth=hdrs['authorization']||hdrs['Authorization']||'';}}
+                var pr=origFetch.apply(this,arguments);
+                if(!captured&&auth.toLowerCase().startsWith('bearer ')){
+                    var token=auth.substring(7);
+                    pr.then(function(resp){if(captured)return;captured=true;restore();
+                        var csrf=resp.headers&&typeof resp.headers.get==='function'?resp.headers.get('x-csrf-token'):'';
+                        launch(token,csrf||'');}).catch(function(){});
+                }
+                return pr;
+            };
+        })();`.replace(/\n/g,'').replace(/  +/g,' ');
+        
+        document.getElementById('magicBookmarklet').href = bmkCode;
+
+        // Load Session from URL or Local Storage
+        const params = new URLSearchParams(window.location.search);
+        let bearer = params.get('bearer');
+        let cookieStr = params.get('cookie');
+        let baseUrl = params.get('baseUrl');
+
+        if (bearer) {
+            document.getElementById('bearerToken').value = bearer;
+            if (cookieStr) document.getElementById('cookieStr').value = cookieStr;
+            // Auto-correct baseUrl: if bookmarklet sent the frontend portal URL, switch to the API URL
+            if (baseUrl) {
+                if (baseUrl === 'https://common.cloud.hpe.com' || baseUrl === 'https://www.common.cloud.hpe.com') {
+                    baseUrl = 'https://aquila-user-api.common.cloud.hpe.com';
+                }
+                document.getElementById('baseUrl').value = baseUrl;
+            }
+
+            // Clean up URL to prevent sharing token by mistake
+            window.history.replaceState({}, document.title, window.location.pathname);
+            saveSession();
+            validateSession();
+        } else {
+            // Restore from Local Storage
+            const sB = localStorage.getItem('ccs_manager_bearer');
+            const sC = localStorage.getItem('ccs_manager_cookie');
+            const sU = localStorage.getItem('ccs_manager_baseUrl');
+            
+            if (sB) document.getElementById('bearerToken').value = sB;
+            if (sC) document.getElementById('cookieStr').value = sC;
+            if (sU) document.getElementById('baseUrl').value = sU;
+            
+            // Automatically Validate if token exists
+            if (sB) validateSession();
+        }
+
+        // Auto Save to Local Storage on Input
+        ['bearerToken', 'cookieStr', 'baseUrl'].forEach(id => {
+            document.getElementById(id).addEventListener('input', saveSession);
+        });
+    });
+
+    function saveSession() {
+        localStorage.setItem('ccs_manager_bearer', document.getElementById('bearerToken').value.trim());
+        localStorage.setItem('ccs_manager_cookie', document.getElementById('cookieStr').value.trim());
+        localStorage.setItem('ccs_manager_baseUrl', document.getElementById('baseUrl').value.trim());
+    }
+
+    // ── Drag-and-drop ─────────────────────────────────────────────────────────
+    ['devFileDrop', 'subFileDrop', 'usrFileDrop', 'devQueryFileDrop', 'unclaimFileDrop', 'claimFileDrop', 'ordFileDrop', 'delUserFileDrop', 'delUserSkipFileDrop'].forEach(id => {
+        const drop = document.getElementById(id);
+        drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+        drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+        drop.addEventListener('drop', e => {
+            e.preventDefault();
+            drop.classList.remove('drag-over');
+            let fileInputId = 'devFile';
+            let labelId = 'devFileLabel';
+            if (id === 'subFileDrop') { fileInputId = 'subFile'; labelId = 'subFileLabel'; }
+            if (id === 'usrFileDrop') { fileInputId = 'usrFile'; labelId = 'usrFileLabel'; }
+            if (id === 'devQueryFileDrop') { fileInputId = 'devQueryFile'; labelId = 'devQueryFileLabel'; }
+            if (id === 'unclaimFileDrop') { fileInputId = 'unclaimFile'; labelId = 'unclaimFileLabel'; }
+            if (id === 'claimFileDrop') { fileInputId = 'claimFile'; labelId = 'claimFileLabel'; }
+            if (id === 'ordFileDrop') { fileInputId = 'ordFile'; labelId = 'ordFileLabel'; }
+            if (id === 'delUserFileDrop') { fileInputId = 'delUserFile'; labelId = 'delUserFileLabel'; }
+            if (id === 'delUserSkipFileDrop') { fileInputId = 'delUserSkipFile'; labelId = 'delUserSkipFileLabel'; }
+            const fileInput = document.getElementById(fileInputId);
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect(fileInput, labelId);
+        });
+    });
+
+    function handleFileSelect(input, labelId) {
+        const label = document.getElementById(labelId);
+        if (input.files && input.files[0]) {
+            label.innerHTML = `<span class="file-name">📄 ${input.files[0].name}</span>`;
+        }
+    }
+
+    // ── Session helpers ───────────────────────────────────────────────────────
+    function getSessionData() {
+        return {
+            bearer: document.getElementById('bearerToken').value.trim(),
+            cookie: document.getElementById('cookieStr').value.trim(),
+            baseUrl: document.getElementById('baseUrl').value.trim() || 'https://aquila-user-api.common.cloud.hpe.com'
+        };
+    }
+
+    // ── Validate Session ──────────────────────────────────────────────────────
+    async function validateSession() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        if (!bearer) { showSessionStatus(false, 'Please enter a bearer token.'); return; }
+
+        setLoader('validateLoader', true);
+        document.getElementById('sessionStatus').style.display = 'none';
+        document.getElementById('wsList').classList.remove('visible');
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+
+        try {
+            const resp = await fetch('/api/ccs/validate-session', { method: 'POST', body: fd });
+            const data = await resp.json();
+
+            if (data.valid) {
+                showSessionStatus(true, `✅ Session valid — ${data.workspace_count} workspace(s) accessible`);
+                if (data.workspaces && data.workspaces.length > 0) {
+                    const wsList = document.getElementById('wsList');
+                    wsList.innerHTML = '<div style="font-size:0.75rem; color:rgba(255,255,255,0.4); margin-bottom:6px;">Accessible Workspaces:</div>';
+                    data.workspaces.forEach(ws => {
+                        wsList.innerHTML += `<span class="ws-chip" title="${ws.id}">${ws.name} <span style="opacity:0.5">${ws.id.slice(0, 8)}…</span></span>`;
+                    });
+                    wsList.classList.add('visible');
+                }
+            } else {
+                showSessionStatus(false, data.error || 'Session invalid.');
+            }
+        } catch (e) {
+            showSessionStatus(false, 'Request failed: ' + e.message);
+        } finally {
+            setLoader('validateLoader', false);
+        }
+    }
+
+    function showSessionStatus(ok, message) {
+        const el = document.getElementById('sessionStatus');
+        el.className = 'session-status ' + (ok ? 'success' : 'error');
+        el.textContent = message;
+        el.style.display = 'flex';
+    }
+
+    // ── Transfer Devices ──────────────────────────────────────────────────────
+    async function transferDevices() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const srcWs = document.getElementById('devSrcWs').value.trim();
+        const dstWs = document.getElementById('devDstWs').value.trim();
+        const file = document.getElementById('devFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!srcWs || !dstWs) { alert('Please enter both source and destination workspace IDs.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('devLoader', true);
+        setBtn('devTransferBtn', true);
+        hideResults();
+
+        const folder = (document.getElementById('devFolder')?.value || '/').trim() || '/';
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('source_workspace_id', srcWs);
+        fd.append('dest_workspace_id', dstWs);
+        fd.append('folder', folder);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/transfer-devices', { method: 'POST', body: fd });
+            const data = await resp.json();
+            showResults(data, 'Device Transfer Results', 'Serial Number');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setLoader('devLoader', false);
+            setBtn('devTransferBtn', false);
+        }
+    }
+
+    // ── Transfer Subscriptions ────────────────────────────────────────────────
+    async function transferSubscriptions() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const srcWs = document.getElementById('subSrcWs').value.trim();
+        const dstWs = document.getElementById('subDstWs').value.trim();
+        const file = document.getElementById('subFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!srcWs || !dstWs) { alert('Please enter both source and destination workspace IDs.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('subLoader', true);
+        setBtn('subTransferBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('source_workspace_id', srcWs);
+        fd.append('dest_workspace_id', dstWs);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/transfer-subscriptions', { method: 'POST', body: fd });
+            const data = await resp.json();
+            showResults(data, 'Subscription Transfer Results', 'Subscription Key');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setLoader('subLoader', false);
+            setBtn('subTransferBtn', false);
+        }
+    }
+
+    // ── Query Users ──────────────────────────────────────────────────────────
+    async function queryUsers() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const file = document.getElementById('usrFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('usrLoader', true);
+        setBtn('usrQueryBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/query-users', { method: 'POST', body: fd });
+            const data = await resp.json();
+            showResults(data, 'User Query Results', 'Search String');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setLoader('usrLoader', false);
+            setBtn('usrQueryBtn', false);
+        }
+    }
+
+    // ── Query Devices ────────────────────────────────────────────────────────
+    let devQueryAbortController = null;
+
+    function abortQueryDevices() {
+        if (devQueryAbortController) {
+            devQueryAbortController.abort();
+            setLoader('devQueryLoader', false);
+            setBtn('devQueryBtn', false);
+            document.getElementById('devQueryLoaderText').textContent = 'Aborted by user.';
+            document.getElementById('devQueryAbortBtn').style.display = 'none';
+        }
+    }
+
+    async function queryDevices() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const file = document.getElementById('devQueryFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('devQueryLoader', true);
+        setBtn('devQueryBtn', true);
+        hideResults();
+
+        document.getElementById('devQueryProgressBar').style.width = '0%';
+        document.getElementById('devQueryLoaderText').textContent = 'Starting query...';
+        document.getElementById('devQueryAbortBtn').style.display = 'inline-block';
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('file', file);
+
+        devQueryAbortController = new AbortController();
+
+        try {
+            const resp = await fetch('/api/ccs/query-devices', { 
+                method: 'POST', 
+                body: fd,
+                signal: devQueryAbortController.signal
+            });
+            
+            if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(text);
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                
+                buffer = lines.pop(); // Keep incomplete tail
+                
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    const event = JSON.parse(line);
+                    
+                    if (event.type === 'progress') {
+                        const pct = Math.round((event.current / event.total) * 100) || 0;
+                        document.getElementById('devQueryProgressBar').style.width = pct + '%';
+                        document.getElementById('devQueryLoaderText').textContent = `Querying devices (${event.current}/${event.total}) - ${event.message}`;
+                    } else if (event.type === 'complete') {
+                        showResults(event.results, 'Device Query Results', 'Serial Number');
+                        return; // exit cleanly
+                    }
+                }
+            }
+        } catch (e) {
+            if (e.name === 'AbortError') {
+                console.log("Query aborted.");
+            } else {
+                alert('Error: ' + e.message);
+            }
+        } finally {
+            setLoader('devQueryLoader', false);
+            setBtn('devQueryBtn', false);
+            devQueryAbortController = null;
+        }
+    }
+
+    // ── Unclaim Devices ───────────────────────────────────────────────────────
+    async function unclaimDevices() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const wsId = document.getElementById('unclaimWs').value.trim();
+        const file = document.getElementById('unclaimFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!wsId) { alert('Please enter the Workspace Customer ID.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('unclaimLoader', true);
+        setBtn('unclaimBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('workspace_id', wsId);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/unclaim-devices', { method: 'POST', body: fd });
+            const data = await resp.json();
+            showResults(data, 'Device Unclaim Results', 'Serial Number');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setLoader('unclaimLoader', false);
+            setBtn('unclaimBtn', false);
+        }
+    }
+
+    // ── Claim Devices ─────────────────────────────────────────────────────────
+    async function claimDevices() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const wsId = document.getElementById('claimWs').value.trim();
+        const folder = document.getElementById('claimFolder').value.trim() || 'default';
+        const file = document.getElementById('claimFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!wsId) { alert('Please enter the Destination Workspace Customer ID.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('claimLoader', true);
+        setBtn('claimBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('workspace_id', wsId);
+        fd.append('folder', folder);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/claim-devices', { method: 'POST', body: fd });
+            const data = await resp.json();
+            showResults(data, 'Device Claim Results', 'Serial Number');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setLoader('claimLoader', false);
+            setBtn('claimBtn', false);
+        }
+    }
+
+    // ── Query Orders ──────────────────────────────────────────────────────────
+    async function queryOrders() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const file = document.getElementById('ordFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('ordLoader', true);
+        setBtn('ordQueryBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/query-orders', { method: 'POST', body: fd });
+            const data = await resp.json();
+            showResults(data, 'Order Query Results', 'Order Number');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setLoader('ordLoader', false);
+            setBtn('ordQueryBtn', false);
+        }
+    }
+
+    // ── Delete Users ──────────────────────────────────────────────────────────
+    let delUserAbortController = null;
+
+    function abortDeleteUsers() {
+        if (delUserAbortController) {
+            delUserAbortController.abort();
+            setLoader('delUserLoader', false);
+            setBtn('delUserBtn', false);
+            document.getElementById('delUserLoaderText').textContent = 'Aborted by user.';
+            document.getElementById('delUserAbortBtn').style.display = 'none';
+        }
+    }
+
+    async function deleteUsers() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const wsId = document.getElementById('delUserWs').value.trim();
+        const file = document.getElementById('delUserFile').files[0];
+        const skipFile = document.getElementById('delUserSkipFile').files[0];
+
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
+
+        setLoader('delUserLoader', true);
+        setBtn('delUserBtn', true);
+        hideResults();
+
+        document.getElementById('delUserProgressBar').style.width = '0%';
+        document.getElementById('delUserLoaderText').textContent = 'Starting deletion...';
+        document.getElementById('delUserAbortBtn').style.display = 'inline-block';
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('workspace_id', wsId);
+        fd.append('file', file);
+        if (skipFile) fd.append('skip_file', skipFile);
+
+        delUserAbortController = new AbortController();
+
+        try {
+            const resp = await fetch('/api/ccs/delete-users', { 
+                method: 'POST', 
+                body: fd,
+                signal: delUserAbortController.signal
+            });
+            
+            if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(text);
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                
+                buffer = lines.pop(); // Keep incomplete tail
+                
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    const event = JSON.parse(line);
+                    
+                    if (event.type === 'progress') {
+                        const pct = Math.round((event.current / event.total) * 100) || 0;
+                        document.getElementById('delUserProgressBar').style.width = pct + '%';
+                        document.getElementById('delUserLoaderText').textContent = `Deleting users (${event.current}/${event.total})...`;
+                    } else if (event.type === 'complete') {
+                        showResults(event.results, 'User Deletion Results', 'Email / Username');
+                        return; // exit cleanly
+                    }
+                }
+            }
+        } catch (e) {
+            if (e.name === 'AbortError') {
+                console.log("Deletion aborted.");
+            } else {
+                alert('Error: ' + e.message);
+            }
+        } finally {
+            setLoader('delUserLoader', false);
+            setBtn('delUserBtn', false);
+            delUserAbortController = null;
+        }
+    }
+
+    // ── Render Results ───────────────────────────────────────────────────────────────
+    let currentResults = [];
+    let currentResultsType = '';
+
+    function showResults(data, title, identifierLabel) {
+        currentResults = data.details || [];
+        currentResultsType = title.includes('User') ? 'users' : title.includes('Device') ? 'devices' : title.includes('Order') ? 'orders' : 'subscriptions';
+
+        const section = document.getElementById('resultsSection');
+        const tbody = document.getElementById('resultsBody');
+
+        document.getElementById('resultsTitle').textContent = title;
+        document.getElementById('colIdentifier').textContent = identifierLabel;
+        document.getElementById('statTotal').textContent = `Total: ${data.total}`;
+        document.getElementById('statSuccess').textContent = `✓ ${data.successful}`;
+        document.getElementById('statFail').textContent = `✗ ${data.failed}`;
+        
+        if (data.elapsed_seconds !== undefined) {
+            document.getElementById('statTime').textContent = `⏱️ ${data.elapsed_seconds}s`;
+            document.getElementById('statTime').style.display = 'inline-block';
+        } else {
+            document.getElementById('statTime').style.display = 'none';
+        }
+
+        const exportBtn = document.getElementById('exportCsvBtn');
+        if (exportBtn) exportBtn.style.display = 'inline-block';
+
+        tbody.innerHTML = '';
+        currentResults.forEach((item, i) => {
+            const identifier = item.serial || item.key || '—';
+            const ok = item.success;
+            const statusLabel = ok
+                ? `<span class="status-pill ok">✓ ${item.status || 'Success'}</span>`
+                : `<span class="status-pill err">✗ Failed</span>`;
+            const detail = ok ? (item.detail || item.status || '') : (item.error || '');
+
+            tbody.innerHTML += `
+                <tr>
+                    <td style="color:rgba(255,255,255,0.4)">${i + 1}</td>
+                    <td><code style="font-size:0.8rem">${identifier}</code></td>
+                    <td>${statusLabel}</td>
+                    <td style="color:rgba(255,255,255,0.5); font-size:0.8rem">${detail}</td>
+                </tr>`;
+        });
+
+        section.classList.add('visible');
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function exportResultsCsv() {
+        if (!currentResults || currentResults.length === 0) return;
+
+        let csvLines = [];
+
+        if (currentResultsType === 'users') {
+            csvLines.push("Search String,Success,Status,Company Name,Customer ID,Account Type,Workspace Status,MSP ID,Region,Created By,Error");
+            currentResults.forEach(item => {
+                const search = `"${(item.key || '').replace(/"/g, '""')}"`;
+                const success = item.success ? "True" : "False";
+                const status = `"${(item.status || '').replace(/"/g, '""')}"`;
+
+                let comp = "", custId = "", accType = "", wsStatus = "";
+                let mspId = "", region = "", createdBy = "";
+
+                if (item.raw) {
+                    comp = `"${(item.raw.company_name || '').replace(/"/g, '""')}"`;
+                    custId = `"${(item.raw.customer_id || '').replace(/"/g, '""')}"`;
+                    accType = `"${(item.raw.account_type || '').replace(/"/g, '""')}"`;
+                    wsStatus = `"${(item.raw.status || '').replace(/"/g, '""')}"`;
+                    mspId = `"${(item.raw.msp_id || '').replace(/"/g, '""')}"`;
+                    region = `"${(item.raw.region || '').replace(/"/g, '""')}"`;
+                    createdBy = `"${(item.raw.created_by || '').replace(/"/g, '""')}"`;
+                }
+
+                const err = `"${(item.error || '').replace(/"/g, '""')}"`;
+
+                csvLines.push(`${search},${success},${status},${comp},${custId},${accType},${wsStatus},${mspId},${region},${createdBy},${err}`);
+            });
+        } else if (currentResultsType === 'devices') {
+            csvLines.push("Serial Number,Success,Status,MAC Address,Part Number,Device Model,Device Status,Workspace ID,Folder,Rule,Error,Order Obj Key,Order Category,Order POS ID,Order Serial Number,Order MAC Address,Order Bill To Name,Order End User Name,Order Part Number,Order Part Description,Order Invoice Date,Order Ship Date,Order Qty,Order Ext Cost,Order Invoice No,Order Order No,Order Customer PO,Order Line No,Order Line Type,Order Zip Code,Order Source,Order Status,Order Party ID,Order Country Party ID,Order Global Party ID,Order Created At,Order Updated At");
+            currentResults.forEach(item => {
+                const serial = `"${(item.key || '').replace(/"/g, '""')}"`;
+                const success = item.success ? "True" : "False";
+                const statusStr = `"${(item.status || '').replace(/"/g, '""')}"`;
+
+                let mac = "", part = "", model = "", devStatus = "", workspaceId = "", folder = "", rule = "";
+                let orderObjKey = "", orderCategory = "", orderPosId = "", orderSerialNumber = "", orderMacAddress = "", orderBillToName = "", orderEndUserName = "", orderPartNumber = "", orderPartDescription = "", orderInvoiceDate = "", orderShipDate = "", orderQty = "", orderExtCost = "", orderInvoiceNo = "", orderOrderNo = "", orderCustomerPo = "", orderLineNo = "", orderLineType = "", orderZipCode = "", orderSource = "", orderStatus = "", orderPartyId = "", orderCountryPartyId = "", orderGlobalPartyId = "", orderCreatedAt = "", orderUpdatedAt = "";
+
+                if (item.raw) {
+                    mac = `"${(item.raw.mac_address || '').replace(/"/g, '""')}"`;
+                    part = `"${(item.raw.part_number || '').replace(/"/g, '""')}"`;
+                    model = `"${(item.raw.device_model || '').replace(/"/g, '""')}"`;
+                    devStatus = `"${(item.raw.status || '').replace(/"/g, '""')}"`;
+                    workspaceId = `"${(item.raw.workspace_id || item.raw.platform_customer_id || '').replace(/"/g, '""')}"`;
+                    folder = `"${(item.raw.folder_name || '').replace(/"/g, '""')}"`;
+                    rule = `"${(item.raw.rule_name || '').replace(/"/g, '""')}"`;
+                    orderObjKey = `"${(item.raw.order_obj_key || '').replace(/"/g, '""')}"`;
+                    orderCategory = `"${(item.raw.order_category || '').replace(/"/g, '""')}"`;
+                    orderPosId = `"${(item.raw.order_pos_id || '').replace(/"/g, '""')}"`;
+                    orderSerialNumber = `"${(item.raw.order_serial_number || '').replace(/"/g, '""')}"`;
+                    orderMacAddress = `"${(item.raw.order_mac_address || '').replace(/"/g, '""')}"`;
+                    orderBillToName = `"${(item.raw.order_bill_to_name || '').replace(/"/g, '""')}"`;
+                    orderEndUserName = `"${(item.raw.order_end_user_name || '').replace(/"/g, '""')}"`;
+                    orderPartNumber = `"${(item.raw.order_part_number || '').replace(/"/g, '""')}"`;
+                    orderPartDescription = `"${(item.raw.order_part_description || '').replace(/"/g, '""')}"`;
+                    orderInvoiceDate = `"${(item.raw.order_invoice_date || '').replace(/"/g, '""')}"`;
+                    orderShipDate = `"${(item.raw.order_ship_date || '').replace(/"/g, '""')}"`;
+                    orderQty = `"${(item.raw.order_qty !== null && item.raw.order_qty !== undefined ? String(item.raw.order_qty) : '').replace(/"/g, '""')}"`;
+                    orderExtCost = `"${(item.raw.order_ext_cost !== null && item.raw.order_ext_cost !== undefined ? String(item.raw.order_ext_cost) : '').replace(/"/g, '""')}"`;
+                    orderInvoiceNo = `"${(item.raw.order_invoice_no || '').replace(/"/g, '""')}"`;
+                    orderOrderNo = `"${(item.raw.order_order_no || '').replace(/"/g, '""')}"`;
+                    orderCustomerPo = `"${(item.raw.order_customer_po || '').replace(/"/g, '""')}"`;
+                    orderLineNo = `"${(item.raw.order_line_no !== null && item.raw.order_line_no !== undefined ? String(item.raw.order_line_no) : '').replace(/"/g, '""')}"`;
+                    orderLineType = `"${(item.raw.order_line_type || '').replace(/"/g, '""')}"`;
+                    orderZipCode = `"${(item.raw.order_zip_code || '').replace(/"/g, '""')}"`;
+                    orderSource = `"${(item.raw.order_source || '').replace(/"/g, '""')}"`;
+                    orderStatus = `"${(item.raw.order_status || '').replace(/"/g, '""')}"`;
+                    orderPartyId = `"${(item.raw.order_party_id || '').replace(/"/g, '""')}"`;
+                    orderCountryPartyId = `"${(item.raw.order_country_party_id || '').replace(/"/g, '""')}"`;
+                    orderGlobalPartyId = `"${(item.raw.order_global_party_id || '').replace(/"/g, '""')}"`;
+                    orderCreatedAt = `"${(item.raw.order_created_at || '').replace(/"/g, '""')}"`;
+                    orderUpdatedAt = `"${(item.raw.order_updated_at || '').replace(/"/g, '""')}"`;
+                }
+
+                const err = `"${(item.error || '').replace(/"/g, '""')}"`;
+
+                csvLines.push(`${serial},${success},${statusStr},${mac},${part},${model},${devStatus},${workspaceId},${folder},${rule},${err},${orderObjKey},${orderCategory},${orderPosId},${orderSerialNumber},${orderMacAddress},${orderBillToName},${orderEndUserName},${orderPartNumber},${orderPartDescription},${orderInvoiceDate},${orderShipDate},${orderQty},${orderExtCost},${orderInvoiceNo},${orderOrderNo},${orderCustomerPo},${orderLineNo},${orderLineType},${orderZipCode},${orderSource},${orderStatus},${orderPartyId},${orderCountryPartyId},${orderGlobalPartyId},${orderCreatedAt},${orderUpdatedAt}`);
+            });
+        } else if (currentResultsType === 'orders') {
+            csvLines.push("Order Number,Success,Status,Subscription Key,SKU,Description,Qty,Available Qty,Capacity,Error");
+            currentResults.forEach(item => {
+                const order = `"${(item.key || '').replace(/"/g, '""')}"`;
+                const success = item.success ? "True" : "False";
+                const statusStr = `"${(item.status || '').replace(/"/g, '""')}"`;
+
+                let subKey = "", sku = "", desc = "", qty = "", availQty = "", cap = "";
+
+                if (item.raw) {
+                    subKey = `"${(item.raw.subscription_key || '').replace(/"/g, '""')}"`;
+                    sku = `"${(item.raw.sku || '').replace(/"/g, '""')}"`;
+                    desc = `"${(item.raw.description || '').replace(/"/g, '""')}"`;
+                    qty = `"${(item.raw.qty || '').replace(/"/g, '""')}"`;
+                    availQty = `"${(item.raw.available_qty || '').replace(/"/g, '""')}"`;
+                    cap = `"${(item.raw.capacity || '').replace(/"/g, '""')}"`;
+                }
+
+                const err = `"${(item.error || '').replace(/"/g, '""')}"`;
+
+                csvLines.push(`${order},${success},${statusStr},${subKey},${sku},${desc},${qty},${availQty},${cap},${err}`);
+            });
+        } else {
+            csvLines.push("Identifier,Success,Status,Detail/Error");
+            currentResults.forEach(item => {
+                const identifier = `"${(item.serial || item.key || '').replace(/"/g, '""')}"`;
+                const success = item.success ? "True" : "False";
+                const status = `"${(item.status || '').replace(/"/g, '""')}"`;
+                const detail = `"${(item.detail || item.error || '').replace(/"/g, '""')}"`;
+                csvLines.push(`${identifier},${success},${status},${detail}`);
+            });
+        }
+
+        const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${currentResultsType}_results.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function hideResults() {
+        document.getElementById('resultsSection').classList.remove('visible');
+    }
+
+    // ── UI Helpers ────────────────────────────────────────────────────────────
+    function setLoader(id, show) {
+        document.getElementById(id).classList.toggle('visible', show);
+    }
+
+    function setBtn(id, disabled) {
+        document.getElementById(id).disabled = disabled;
+        let text = '⚡ Transfer Devices';
+        if (id === 'subTransferBtn') text = '⚡ Transfer Subscriptions';
+        if (id === 'usrQueryBtn') text = '⚡ Query Users';
+        if (id === 'devQueryBtn') text = '⚡ Query Devices';
+        if (id === 'ordQueryBtn') text = '⚡ Query Orders';
+        if (id === 'unclaimBtn') text = '⚡ Unclaim Devices';
+        if (id === 'claimBtn') text = '⚡ Claim Devices';
+        if (id === 'delUserBtn') text = '⚡ Delete Users';
+        document.getElementById(id).textContent = disabled ? '⌛ Working...' : text;
+    }
+</script>
+{% endblock %}

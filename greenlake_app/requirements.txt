@@ -10,3 +10,4 @@ pydantic
 PyYAML
 pytz
 pydantic-settings
+httpx

@@ -9,22 +9,24 @@ import os
 
 app = FastAPI(title="GreenLake Dashboard")
 
-# Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Templates
+
 templates = Jinja2Templates(directory="app/templates")
 
-# Include API router
 app.include_router(api_router, prefix="/api")
 from app.api.routers.reports import router as reports_router
 from app.api.routers.bulk import router as bulk_router
 from app.api.routers.auth import router as auth_router
+from app.api.routers.ccs_manager import router as ccs_router
 
 app.include_router(devices_router.router, prefix="/api/devices", tags=["devices"])
 app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
 app.include_router(bulk_router, prefix="/api/bulk", tags=["bulk"])
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(ccs_router, prefix="/api/ccs", tags=["ccs-manager"])
+from app.api.routers import sites_groups
+app.include_router(sites_groups.router, prefix="/api", tags=["sites-groups"])
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -116,3 +118,15 @@ async def read_bulk(request: Request):
     client = get_glp_client()
     configured = client is not None
     return templates.TemplateResponse("bulk.html", {"request": request, "configured": configured})
+
+@app.get("/sites-groups", response_class=HTMLResponse)
+async def read_sites_groups(request: Request):
+    client = get_glp_client()
+    configured = client is not None
+    return templates.TemplateResponse("sites_groups.html", {"request": request, "configured": configured})
+
+@app.get("/ccs-manager", response_class=HTMLResponse)
+async def read_ccs_manager(request: Request):
+    client = get_glp_client()
+    configured = client is not None
+    return templates.TemplateResponse("ccs_manager.html", {"request": request, "configured": configured})
