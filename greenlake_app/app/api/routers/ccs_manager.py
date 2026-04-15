@@ -1381,3 +1381,364 @@ async def ccs_delete_users(
         yield json.dumps({"type": "complete", "results": results}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+
+# ============================================================
+# AUDIT CUSTOMER APP IDs (CCS-Manager session / Aquila)
+# ============================================================
+
+def _get_provisions(base_url: str, headers: dict, platform_customer_id: str) -> list:
+    """
+    Fetch all app provisions for a given workspace (platform_customer_id).
+    Returns a list of dicts with at least an 'app_id' key.
+    Paginates automatically up to 500 items.
+    """
+    provisions = []
+    offset = 0
+    limit = 50
+    while True:
+        url = f"{base_url}/support-assistant/v1alpha1/customer-provisions"
+        params = {
+            "limit": limit,
+            "offset": offset,
+            "platform_customer_id": platform_customer_id,
+        }
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            print(f"[CCS] Provisions for {platform_customer_id}: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                print(f"[CCS] Provisions error body: {resp.text[:300]}")
+                break
+            data = resp.json()
+
+            # Log keys + first item to understand the response schema (once per workspace)
+            if offset == 0:
+                top_keys = list(data.keys()) if isinstance(data, dict) else f"LIST len={len(data)}"
+                print(f"[CCS] Provisions response keys: {top_keys}")
+                print(f"[CCS] Provisions raw[:800]: {str(data)[:800]}")
+
+            # Try every plausible top-level field name
+            if isinstance(data, list):
+                items = data
+            else:
+                items = (
+                    data.get("provisions")
+                    or data.get("customer_provisions")
+                    or data.get("applications")
+                    or data.get("app_provisions")
+                    or data.get("items")
+                    or data.get("data")
+                    or data.get("results")
+                    or []
+                )
+
+            # Log the first provision item so we can see its structure
+            if offset == 0 and items:
+                print(f"[CCS] First provision item keys: {list(items[0].keys()) if isinstance(items[0], dict) else items[0]}")
+                print(f"[CCS] First provision item sample: {str(items[0])[:400]}")
+
+            if not items:
+                break
+            provisions.extend(items)
+            if len(items) < limit:
+                break
+            offset += limit
+        except Exception as e:
+            print(f"[CCS] Error fetching provisions for {platform_customer_id}: {e}")
+            break
+    return provisions
+
+
+def _get_tenants(base_url: str, headers: dict, msp_customer_id: str) -> list:
+    """
+    Fetch all tenants for an MSP workspace.
+    Returns a list of tenant dicts; each should include a platform_customer_id for the tenant.
+    """
+    tenants = []
+    offset = 0
+    limit = 50
+    while True:
+        url = f"{base_url}/support-assistant/v1alpha1/tenants"
+        params = {
+            "limit": limit,
+            "offset": offset,
+            "platform_customer_id": msp_customer_id,
+        }
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            print(f"[CCS] Tenants for MSP {msp_customer_id}: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                print(f"[CCS] Tenant API error body: {resp.text[:400]}")
+                break
+            data = resp.json()
+            # Log the full top-level keys so we can see what field name the API uses
+            top_keys = list(data.keys()) if isinstance(data, dict) else f"LIST len={len(data)}"
+            print(f"[CCS] Tenant API response keys: {top_keys}  | raw[:400]: {str(data)[:400]}")
+
+            # Try every plausible field name the Aquila API might use
+            if isinstance(data, list):
+                items = data
+            else:
+                items = (
+                    data.get("tenants")
+                    or data.get("tenant_customers")
+                    or data.get("tenant_list")
+                    or data.get("customers")
+                    or data.get("items")
+                    or data.get("data")
+                    or data.get("results")
+                    or []
+                )
+                # Last resort: if still empty but only one key and its value is a list, use that
+                if not items and isinstance(data, dict):
+                    for v in data.values():
+                        if isinstance(v, list) and len(v) > 0:
+                            items = v
+                            print(f"[CCS] Using fallback tenant list from first list-valued key")
+                            break
+
+            print(f"[CCS] Tenants found in this page: {len(items)}")
+            if not items:
+                break
+            tenants.extend(items)
+            if len(items) < limit:
+                break
+            offset += limit
+        except Exception as e:
+            print(f"[CCS] Error fetching tenants for {msp_customer_id}: {e}")
+            break
+    return tenants
+
+
+def _extract_app_ids(provision: dict) -> list:
+    """
+    Extract ALL plausible application/service IDs from a customer-provisions item.
+    Returns a list of unique ID strings rather than just the first one found,
+    as some records contain different IDs in different fields.
+    """
+    ids = set()
+    # --- Flat fields ---
+    for key in ("app_id", "application_id", "customer_application_id", "application_customer_id",
+                "service_id", "appId", "app_instance_id", "provision_id",
+                "instance_id", "application_instance_name"):
+        val = provision.get(key)
+        if val and isinstance(val, str):
+            ids.add(val.strip())
+
+    # --- Nested: provision["application"]["id"] or provision["app"]["id"] ---
+    for nested_key in ("application", "app", "service", "product"):
+        nested = provision.get(nested_key)
+        if isinstance(nested, dict):
+            for id_key in ("id", "app_id", "application_id", "instance_id", "appId", "customer_id", "application_customer_id"):
+                val = nested.get(id_key)
+                if val and isinstance(val, str):
+                    ids.add(val.strip())
+
+    return list(ids)
+
+
+@router.post("/audit-customer-apps")
+async def ccs_audit_customer_apps(
+    bearer_token: str = Form(...),
+    cookie: str = Form(""),
+    base_url: str = Form(API_BASE),
+    file: UploadFile = File(...),      # CSV of search strings (customer name / email / ID)
+    ref_file: UploadFile = File(...)   # CSV of reference app_ids to compare against
+):
+    """
+    For each customer search string:
+      1. Query /support-assistant/v1alpha1/customers to find matching workspaces.
+      2. For each workspace, fetch customer-provisions to collect app_ids.
+      3. If the workspace is an MSP, also fetch tenants and their provisions.
+      4. Compare all collected app_ids against the reference list from ref_file.
+    Returns per-workspace results showing matched and missing app IDs.
+    Requires an Aquila session base URL.
+    """
+    start_time = time.time()
+
+    use_aquila = is_aquila_url(base_url)
+    if not use_aquila:
+        raise HTTPException(status_code=400, detail="Audit Customer Apps requires an Aquila session base URL")
+
+    # ── Parse search strings CSV ────────────────────────────────────────────
+    content = await file.read()
+    search_strings = parse_csv_column(
+        content,
+        ["Search String", "search_string", "Customer", "customer", "Email", "email",
+         "ID", "id", "Company", "company", "Name", "name"]
+    )
+    if not search_strings:
+        raise HTTPException(status_code=400, detail="No search strings found in CSV (expected a column: Search String, Customer, Email, or ID)")
+
+    # ── Parse reference app IDs CSV ─────────────────────────────────────────
+    ref_content = await ref_file.read()
+    ref_app_ids_raw = parse_csv_column(
+        ref_content,
+        ["App ID", "app_id", "Application ID", "application_id",
+         "AppID", "Service ID", "service_id", "ID", "id"]
+    )
+    # Normalise to a set (lower-case, stripped) for fast lookup
+    reference_set = {aid.strip().lower() for aid in ref_app_ids_raw if aid.strip()}
+    print(f"[CCS] Audit: Parsed reference IDs: {reference_set}")
+    if not reference_set:
+        raise HTTPException(status_code=400, detail="No app IDs found in reference CSV (expected a column: App ID, Application ID, or id)")
+
+    headers = make_headers(bearer_token, cookie, base_url=base_url)
+    customers_endpoint = f"{base_url}/support-assistant/v1alpha1/customers"
+
+    results = {
+        "total": 0,
+        "successful": 0,
+        "failed": 0,
+        "details": [],
+        "elapsed_seconds": 0,
+        "reference_count": len(reference_set),
+    }
+
+    def process_search_str(search_str: str):
+        print(f"[CCS] Audit: searching customers for '{search_str}'")
+        res_details = []
+        try:
+            resp = requests.get(
+                customers_endpoint,
+                headers=headers,
+                params={"limit": 10, "offset": 0, "search_string": search_str},
+                timeout=30,
+            )
+        except Exception as e:
+            return {"failed": 1, "total": 0, "successful": 0, "details": [{"key": search_str, "success": False, "error": str(e)}]}
+
+        if resp.status_code != 200:
+            error_msg = f"HTTP {resp.status_code}"
+            try:
+                err = resp.json()
+                error_msg = err.get("message", err.get("detail", str(err)))
+            except Exception:
+                error_msg = resp.text[:200] or error_msg
+            return {"failed": 1, "total": 0, "successful": 0, "details": [{"key": search_str, "success": False, "error": error_msg}]}
+
+        customers = resp.json().get("customers", [])
+        if not customers:
+            return {"failed": 1, "total": 0, "successful": 0, "details": [{"key": search_str, "success": False, "error": "No customers found for this search string"}]}
+
+        stats = {"failed": 0, "total": 0, "successful": 0, "details": []}
+        
+        # ── 2. For each matched workspace, gather provisions ────────────────
+        for cust in customers:
+            stats["total"] += 1
+            cust_id = cust.get("customer_id", "")
+            comp_name = cust.get("contact", {}).get("company_name", search_str)
+            acct_type = cust.get("account_type", "")
+            region = cust.get("region", "")
+
+            if not cust_id:
+                stats["failed"] += 1
+                stats["details"].append({
+                    "key": search_str,
+                    "success": False,
+                    "error": "Customer found but missing customer_id",
+                })
+                continue
+
+            collected_app_ids = set()
+
+            # Direct provisions
+            provisions = _get_provisions(base_url, headers, cust_id)
+            for p in provisions:
+                aids = _extract_app_ids(p)
+                for aid in aids:
+                    collected_app_ids.add(aid.lower())
+
+            # MSP: also iterate tenants
+            tenant_summary = []
+            is_msp = acct_type.upper() == "MSP"
+            if is_msp:
+                print(f"[CCS] Audit: {cust_id} is MSP — fetching tenants")
+                tenants = _get_tenants(base_url, headers, cust_id)
+                print(f"[CCS] Audit: MSP {cust_id} → {len(tenants)} tenant(s) returned")
+                
+                def fetch_tenant_provisions(tenant):
+                    tenant_cust_id = (
+                        tenant.get("platform_customer_id") or tenant.get("customer_id")
+                        or tenant.get("tenant_customer_id") or tenant.get("workspace_id")
+                        or tenant.get("account_id") or tenant.get("id") or ""
+                    )
+                    tenant_name = (
+                        tenant.get("company_name") or tenant.get("name")
+                        or tenant.get("tenant_name") or tenant.get("contact", {}).get("company_name", "")
+                        or tenant_cust_id
+                    )
+                    if not tenant_cust_id:
+                        return None
+                    t_provisions = _get_provisions(base_url, headers, tenant_cust_id)
+                    t_aids = set()
+                    for p in t_provisions:
+                        for aid in _extract_app_ids(p):
+                            t_aids.add(aid.lower())
+                    return {"id": tenant_cust_id, "name": tenant_name, "aids": t_aids}
+
+                with ThreadPoolExecutor(max_workers=10) as t_executor:
+                    for t_res in t_executor.map(fetch_tenant_provisions, tenants):
+                        if not t_res:
+                            continue
+                        t_aids = t_res["aids"]
+                        for aid in t_aids:
+                            collected_app_ids.add(aid)
+                        t_matched = sorted(t_aids & reference_set)
+                        tenant_summary.append({
+                            "tenant_id": t_res["id"],
+                            "tenant_name": t_res["name"],
+                            "app_ids_found": sorted(t_aids),
+                            "matched": t_matched,
+                            "missing_from_tenant": sorted(reference_set - t_aids),
+                        })
+
+            # ── 3. Compare against reference ────────────────────────────────
+            print(f"[CCS] Audit: Comparing for {cust_id}. Collected: {collected_app_ids}")
+            matched = sorted(collected_app_ids & reference_set)
+            missing = sorted(reference_set - collected_app_ids)
+
+            detail_str = f"Company: {comp_name} | Region: {region} | Type: {acct_type}"
+            if matched:
+                detail_str += f" | Found IDs: {', '.join(matched)}"
+
+            if is_msp:
+                matched_tenants = [t["tenant_name"] for t in tenant_summary if t["matched"]]
+                if matched_tenants:
+                    detail_str += f" | Matched inside Tenants: {', '.join(matched_tenants)}"
+                else:
+                    detail_str += f" | Checked {len(tenant_summary)} tenants (no matches)"
+
+            stats["successful"] += 1
+            stats["details"].append({
+                "key": f"{search_str} → {comp_name} ({cust_id})",
+                "success": True,
+                "status": "Match" if matched else "No Match",
+                "detail": detail_str,
+                "raw": {
+                    "search_string": search_str,
+                    "customer_id": cust_id,
+                    "company_name": comp_name,
+                    "account_type": acct_type,
+                    "region": region,
+                    "is_msp": is_msp,
+                    "app_ids_found": sorted(collected_app_ids),
+                    "matched_app_ids": matched,
+                    "missing_app_ids": missing,
+                    "reference_count": len(reference_set),
+                    "tenants": tenant_summary if is_msp else [],
+                },
+            })
+            
+        return stats
+
+    # Run the outer loop in parallel
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for partial_stats in executor.map(process_search_str, search_strings):
+            results["total"] += partial_stats["total"]
+            results["successful"] += partial_stats["successful"]
+            results["failed"] += partial_stats["failed"]
+            results["details"].extend(partial_stats["details"])
+
+    results["elapsed_seconds"] = round(time.time() - start_time, 2)
+    return JSONResponse(content=results)

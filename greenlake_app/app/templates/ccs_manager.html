@@ -797,6 +797,44 @@
                 <button id="delUserAbortBtn" class="btn-secondary" style="margin-top: 4px; padding: 4px 12px; font-size: 0.8rem; border-color: #e84118; color: #e84118;" onclick="abortDeleteUsers()">Abort</button>
             </div>
         </div>
+
+        <!-- Audit Customer App IDs -->
+        <div class="op-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4"></path>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                </svg>
+                Audit Customer App IDs
+            </h3>
+            <p>Search customers, fetch their provisioned app IDs (including MSP tenants), and compare against a reference list. (Requires Aquila session)</p>
+
+            <div style="height: 16px;"></div>
+
+            <div class="file-drop" id="auditSearchFileDrop" onclick="document.getElementById('auditSearchFile').click()">
+                <i data-feather="search"></i>
+                <p id="auditSearchFileLabel">CSV 1 — Search Strings (company name, email, or ID)</p>
+                <input type="file" id="auditSearchFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'auditSearchFileLabel')">
+            </div>
+
+            <div style="height: 12px;"></div>
+
+            <div class="file-drop" id="auditRefFileDrop" onclick="document.getElementById('auditRefFile').click()" style="border-color: rgba(162,155,254,0.35); background: rgba(162,155,254,0.04);">
+                <i data-feather="list"></i>
+                <p id="auditRefFileLabel">CSV 2 — Reference App IDs to compare against</p>
+                <input type="file" id="auditRefFile" accept=".csv" style="display:none"
+                    onchange="handleFileSelect(this, 'auditRefFileLabel')">
+            </div>
+
+            <button class="btn-primary" id="auditBtn" onclick="auditCustomerApps()" style="background: linear-gradient(135deg, #a29bfe, #6c5ce7);">
+                Run Audit
+            </button>
+            <div class="loading-overlay" id="auditLoader" style="justify-content: center;">
+                <div class="spinner" style="border-top-color: #a29bfe;"></div> Auditing — please wait...
+            </div>
+        </div>
     </div>
 
     <!-- ── Results ───────────────────────────────────────────── -->
@@ -929,7 +967,7 @@
     }
 
     // ── Drag-and-drop ─────────────────────────────────────────────────────────
-    ['devFileDrop', 'subFileDrop', 'usrFileDrop', 'devQueryFileDrop', 'unclaimFileDrop', 'claimFileDrop', 'ordFileDrop', 'delUserFileDrop', 'delUserSkipFileDrop'].forEach(id => {
+    ['devFileDrop', 'subFileDrop', 'usrFileDrop', 'devQueryFileDrop', 'unclaimFileDrop', 'claimFileDrop', 'ordFileDrop', 'delUserFileDrop', 'delUserSkipFileDrop', 'auditSearchFileDrop', 'auditRefFileDrop'].forEach(id => {
         const drop = document.getElementById(id);
         drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
         drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
@@ -946,6 +984,8 @@
             if (id === 'ordFileDrop') { fileInputId = 'ordFile'; labelId = 'ordFileLabel'; }
             if (id === 'delUserFileDrop') { fileInputId = 'delUserFile'; labelId = 'delUserFileLabel'; }
             if (id === 'delUserSkipFileDrop') { fileInputId = 'delUserSkipFile'; labelId = 'delUserSkipFileLabel'; }
+            if (id === 'auditSearchFileDrop') { fileInputId = 'auditSearchFile'; labelId = 'auditSearchFileLabel'; }
+            if (id === 'auditRefFileDrop') { fileInputId = 'auditRefFile'; labelId = 'auditRefFileLabel'; }
             const fileInput = document.getElementById(fileInputId);
             fileInput.files = e.dataTransfer.files;
             handleFileSelect(fileInput, labelId);
@@ -1390,6 +1430,53 @@
             setLoader('delUserLoader', false);
             setBtn('delUserBtn', false);
             delUserAbortController = null;
+        }
+    }
+
+    // ── Audit Customer App IDs ────────────────────────────────────────────────────────
+    async function auditCustomerApps() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const searchFile = document.getElementById('auditSearchFile').files[0];
+        const refFile    = document.getElementById('auditRefFile').files[0];
+
+        if (!bearer)     { alert('Please enter a bearer token.'); return; }
+        if (!searchFile) { alert('Please select the Search Strings CSV (CSV 1).'); return; }
+        if (!refFile)    { alert('Please select the Reference App IDs CSV (CSV 2).'); return; }
+
+        setLoader('auditLoader', true);
+        setBtn('auditBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('file', searchFile);
+        fd.append('ref_file', refFile);
+
+        try {
+            const resp = await fetch('/api/ccs/audit-customer-apps', { method: 'POST', body: fd });
+            const data = await resp.json();
+
+            if (!resp.ok) {
+                throw new Error(data.detail || JSON.stringify(data));
+            }
+
+            // Augment totals count from the details array if backend total == 0 (pre-loop)
+            if (!data.total && data.details) data.total = data.details.length;
+
+            // Add a badge for how many reference IDs were loaded
+            if (data.reference_count !== undefined) {
+                document.getElementById('statTime').textContent = `📋 ${data.reference_count} ref IDs`;
+                document.getElementById('statTime').style.display = 'inline-block';
+            }
+
+            showResults(data, 'Audit — Customer App IDs', 'Customer / Workspace');
+        } catch (e) {
+            alert('Audit failed: ' + e.message);
+        } finally {
+            setLoader('auditLoader', false);
+            setBtn('auditBtn', false);
         }
     }
 
