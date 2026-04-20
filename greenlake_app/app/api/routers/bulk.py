@@ -6,8 +6,15 @@ import csv
 import io
 import time
 import requests
+import asyncio
+import httpx
+import uuid as _uuid
 
 router = APIRouter()
+
+# ── Abort flag store ─────────────────────────────────────────────────────────
+# Maps operation_id -> asyncio.Event  (set = abort requested)
+_abort_events: dict = {}
 
 API_ENDPOINT = "https://global.api.greenlake.hpe.com"
 
@@ -208,190 +215,418 @@ def get_subscription_id_from_key(token: str, subscription_key: str) -> Optional[
 # ============================================================
 
 @router.post("/device-info")
-async def bulk_device_info(file: UploadFile = File(...)):
+async def bulk_device_info(
+    file: UploadFile = File(...),
+    operation_id: Optional[str] = Form(None),
+):
     """Get device information for all devices in CSV."""
     client = get_glp_client()
     if not client:
         raise HTTPException(status_code=401, detail="Client not configured")
-    
-    token = get_token(client)
-    content = await file.read()
-    devices = parse_csv_serials(content)
-    
-    if not devices:
-        raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
-    
-    results = []
-    for device_info in devices:
-        serial = device_info['serial']
-        device = get_device_by_serial(token, serial)
-        if device:
-            app_data = device.get('application') or {}
-            sub_data = device.get('subscription')
-            
-            sub_key = None
-            if sub_data:
-                if isinstance(sub_data, list) and len(sub_data) > 0:
-                    sub_key = sub_data[0].get('key')
-                elif isinstance(sub_data, dict):
-                    sub_key = sub_data.get('key')
-            #need to work on the regex matching for better results
-            results.append({
-                'serial': serial,
-                'found': True,
-                'data': {
-                    'id': device.get('id'),
-                    'name': device.get('name'),
-                    'model': device.get('model'),
-                    'macAddress': device.get('macAddress'),
-                    'deviceType': device.get('deviceType'),
-                    'status': device.get('status'),
-                    'application': app_data.get('name') if app_data else None,
-                    'subscription': sub_key
-                }
-            })
-        else:
-            results.append({'serial': serial, 'found': False, 'error': 'Device not found'})
-    
-    return JSONResponse(content={'total': len(devices), 'results': results})
+
+    op_id = operation_id or str(_uuid.uuid4())
+    abort_event = asyncio.Event()
+    _abort_events[op_id] = abort_event
+
+    try:
+        token = get_token(client)
+        content = await file.read()
+        devices = parse_csv_serials(content)
+
+        if not devices:
+            raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
+
+        # Concurrent lookup — GET endpoints tolerate higher concurrency
+        lookup_sem = asyncio.Semaphore(15)
+
+        async def _lookup(device_info):
+            if abort_event.is_set():
+                return {'serial': device_info['serial'], 'found': False, 'error': 'Aborted'}
+            serial = device_info['serial']
+            async with lookup_sem:
+                return await _async_lookup_device_uuid(token, serial, abort_event)
+
+        raw_results = await asyncio.gather(*[_lookup(d) for d in devices])
+
+        # Enrich with full device data for found devices
+        results = []
+        enrich_sem = asyncio.Semaphore(10)
+
+        async def _enrich(lr):
+            serial = lr['serial']
+            if not lr.get('uuid'):
+                return {'serial': serial, 'found': False,
+                        'error': 'Aborted' if lr.get('aborted') else 'Device not found'}
+            async with enrich_sem:
+                url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+                headers = {"Authorization": f"Bearer {token}"}
+                params = {"filter": f"id eq '{lr['uuid']}'"}  # fetch by uuid for speed
+                try:
+                    async with httpx.AsyncClient(timeout=30) as client_h:
+                        resp = await client_h.get(url, headers=headers, params=params)
+                    if resp.status_code == 200:
+                        items = resp.json().get('items', [])
+                        if items:
+                            device = items[0]
+                            app_data = device.get('application') or {}
+                            sub_data = device.get('subscription')
+                            sub_key = None
+                            if sub_data:
+                                if isinstance(sub_data, list) and sub_data:
+                                    sub_key = sub_data[0].get('key')
+                                elif isinstance(sub_data, dict):
+                                    sub_key = sub_data.get('key')
+                            return {
+                                'serial': serial, 'found': True,
+                                'data': {
+                                    'id': device.get('id'),
+                                    'name': device.get('name'),
+                                    'model': device.get('model'),
+                                    'macAddress': device.get('macAddress'),
+                                    'deviceType': device.get('deviceType'),
+                                    'status': device.get('status'),
+                                    'application': app_data.get('name') if app_data else None,
+                                    'subscription': sub_key,
+                                }
+                            }
+                except Exception as e:
+                    pass
+            return {'serial': serial, 'found': False, 'error': 'Failed to fetch device details'}
+
+        results = list(await asyncio.gather(*[_enrich(lr) for lr in raw_results]))
+        return JSONResponse(content={
+            'operation_id': op_id,
+            'total': len(devices),
+            'aborted': abort_event.is_set(),
+            'results': results,
+        })
+    finally:
+        _abort_events.pop(op_id, None)
 
 
 # ============================================================
 # ASSIGN SUBSCRIPTION
 # ============================================================
 
+# ── Concurrency limits for assign-subscription ───────────────────────────────
+# GET (UUID lookup): 15 parallel is fine — read endpoints are less restricted
+_ASSIGN_LOOKUP_CONCURRENCY = 15
+# PATCH (write): HPE GreenLake throttles writes heavily; keep at 3 max
+_ASSIGN_PATCH_CONCURRENCY = 3
+# 429 retry settings
+_MAX_RETRY_429 = 4        # max attempts per device
+_RETRY_BACKOFF_BASE = 8   # seconds; doubles each retry (8 → 16 → 32 → 64)
+
+
+async def _async_lookup_device_uuid(token: str, serial: str, abort_event: asyncio.Event) -> dict:
+    """Concurrently look up device UUID by serial. Returns {'serial', 'uuid'|None}."""
+    if abort_event.is_set():
+        return {'serial': serial, 'uuid': None, 'aborted': True}
+
+    url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"filter": f"serialNumber eq '{serial}'"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url, headers=headers, params=params)
+            if resp.status_code == 200:
+                items = resp.json().get('items', [])
+                if items:
+                    return {'serial': serial, 'uuid': items[0].get('id')}
+    except Exception as e:
+        print(f"[WARN] UUID lookup failed for {serial}: {e}")
+
+    return {'serial': serial, 'uuid': None}
+
+
+async def _async_patch_subscription(
+    token: str,
+    serial: str,
+    device_uuid: str,
+    subscription_id: str,
+    abort_event: asyncio.Event,
+) -> dict:
+    """PATCH subscription on a single device with 429 retry/backoff. Returns rich result dict."""
+    if abort_event.is_set():
+        return {'serial': serial, 'success': False, 'aborted': True, 'error': 'Aborted by user'}
+
+    url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+    headers = get_auth_headers(token, "application/merge-patch+json")
+    params = {"id": device_uuid}
+    payload = {"subscription": [{"id": subscription_id}]}
+
+    last_resp = None
+    for attempt in range(1, _MAX_RETRY_429 + 1):
+        if abort_event.is_set():
+            return {'serial': serial, 'success': False, 'aborted': True, 'error': 'Aborted by user'}
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.patch(url, headers=headers, params=params, json=payload)
+            last_resp = resp
+            print(f"[DEBUG] PATCH {serial}: HTTP {resp.status_code} (attempt {attempt})", flush=True)
+
+            if resp.status_code == 429:
+                # Honour Retry-After header if present, otherwise use exponential backoff
+                retry_after = resp.headers.get('Retry-After')
+                wait = int(retry_after) if retry_after and retry_after.isdigit() \
+                       else _RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+                print(f"[WARN] 429 rate-limit for {serial}. Waiting {wait}s before retry {attempt}/{_MAX_RETRY_429}", flush=True)
+                await asyncio.sleep(wait)
+                continue  # retry
+
+            # Not a 429 — handle final response below
+            break
+
+        except Exception as e:
+            return {
+                'serial': serial, 'success': False, 'error': str(e),
+                'device_uuid': device_uuid, 'subscription_id': subscription_id, 'exception': True,
+            }
+    else:
+        # Exhausted all retries on 429
+        return {
+            'serial': serial, 'success': False,
+            'error': f'Rate-limited (HTTP 429) after {_MAX_RETRY_429} retries — API quota exhausted.',
+            'http_status': 429, 'device_uuid': device_uuid, 'subscription_id': subscription_id,
+        }
+
+    resp = last_resp
+    try:
+        if resp.status_code == 200:
+            return {'serial': serial, 'success': True, 'status': 'Completed'}
+
+        elif resp.status_code == 202:
+            progress_url = resp.headers.get('location', '')
+            if not progress_url:
+                try:
+                    txn_id = resp.json().get('transactionId', '')
+                    if txn_id:
+                        progress_url = f"{API_ENDPOINT}/async-operations/v1/async-operations/{txn_id}"
+                except Exception:
+                    pass
+
+            if progress_url:
+                loop = asyncio.get_event_loop()
+                async_result = await loop.run_in_executor(
+                    None, check_async_progress, token, progress_url
+                )
+                if async_result['success'] is True:
+                    return {'serial': serial, 'success': True, 'status': 'Completed'}
+                elif async_result['success'] is False:
+                    # Build a human-readable hint for the most common causes
+                    result_data = async_result.get('result', {})
+                    failed_devices = result_data.get('failedDevices', [])
+                    hint = ''
+                    if failed_devices and not result_data.get('reason') and not async_result.get('details', '').strip():
+                        hint = (' Possible causes: (1) subscription has no remaining seats, '
+                                '(2) subscription tier does not match device type, '
+                                '(3) device is already bound to a different subscription — unassign it first.')
+                    error_msg = (async_result.get('details') or 'Async operation FAILED') + hint
+                    return {
+                        'serial': serial, 'success': False, 'error': error_msg,
+                        'http_status': 202, 'device_uuid': device_uuid,
+                        'subscription_id': subscription_id,
+                        'async_status': async_result.get('status'),
+                        'async_result': result_data,
+                    }
+                else:
+                    return {'serial': serial, 'success': True, 'status': 'Processing (check later)'}
+            else:
+                return {'serial': serial, 'success': True, 'status': '202 Accepted'}
+
+        else:
+            http_status = resp.status_code
+            raw_body = ''
+            error_msg = f"HTTP {http_status}"
+            try:
+                error_data = resp.json()
+                error_msg = error_data.get('message', error_data.get('description', str(error_data)))
+                raw_body = str(error_data)
+            except Exception:
+                raw_body = resp.text[:500] if resp.text else ''
+                error_msg = raw_body or error_msg
+
+            return {
+                'serial': serial, 'success': False, 'error': error_msg,
+                'http_status': http_status, 'raw_response': raw_body[:500],
+                'device_uuid': device_uuid, 'subscription_id': subscription_id,
+            }
+
+    except Exception as e:
+        return {
+            'serial': serial, 'success': False, 'error': str(e),
+            'device_uuid': device_uuid, 'subscription_id': subscription_id, 'exception': True,
+        }
+
+
 @router.post("/assign-subscription")
 async def bulk_assign_subscription(
     subscription_key: str = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    operation_id: Optional[str] = Form(None),
 ):
-    """Bulk assign subscription to devices from CSV."""
+    """Bulk assign subscription to devices from CSV.
+
+    Improvements over v1:
+    - Concurrent UUID lookups (up to 15 parallel) — much faster for large CSVs.
+    - Abort support: pass operation_id then call DELETE /api/bulk/abort/{operation_id}.
+    - Detailed failure report: includes http_status, raw_response, device_uuid,
+      subscription_id and async_result for every persistent failure.
+    """
     client = get_glp_client()
     if not client:
         raise HTTPException(status_code=401, detail="Client not configured")
-    
+
     token = get_token(client)
-    
-    # Get subscription ID from key
-    subscription_id = get_subscription_id_from_key(token, subscription_key)
-    if not subscription_id:
-        raise HTTPException(status_code=404, detail=f"Subscription key '{subscription_key}' not found")
-    
-    print(f"[DEBUG] Found subscription ID: {subscription_id} for key: {subscription_key}", flush=True)
-    
-    # Parse CSV
-    content = await file.read()
-    devices = parse_csv_serials(content)
-    
-    if not devices:
-        raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
-    
-    print(f"[DEBUG] Processing {len(devices)} devices for subscription assignment", flush=True)
-    
-    # Collect device UUIDs
-    device_map = {}
-    for device_info in devices:
-        serial = device_info['serial']
-        device = get_device_by_serial(token, serial)
-        if device and device.get('id'):
-            device_map[serial] = device['id']
-            print(f"[DEBUG] Found device {serial} with ID {device['id']}", flush=True)
-        else:
-            print(f"[DEBUG] Device {serial} not found in system", flush=True)
-    
-    if not device_map:
-        raise HTTPException(status_code=404, detail="No devices found from CSV")
-    
-    # Assign subscription to each device individually
-    results = {'total': len(devices), 'successful': 0, 'failed': 0, 'details': []}
-    url = f"{API_ENDPOINT}/devices/v1beta1/devices"
-    
-    for serial, device_uuid in device_map.items():
-        try:
-            headers = get_auth_headers(token, "application/merge-patch+json")
-            params = {"id": device_uuid}
-            payload = {"subscription": [{"id": subscription_id}]}
-            
-            print(f"[DEBUG] PATCH {url}?id={device_uuid}")
-            print(f"[DEBUG] Payload: {payload}")
-            
-            response = requests.patch(url, headers=headers, params=params, json=payload, timeout=30)
-            
-            print(f"[DEBUG] Device {serial}: Status {response.status_code}")
-            print(f"[DEBUG] Response headers: {dict(response.headers)}")
-            print(f"[DEBUG] Response body: {response.text[:500]}")
-            
-            if response.status_code == 200:
+
+    # Register abort event
+    op_id = operation_id or str(_uuid.uuid4())
+    abort_event = asyncio.Event()
+    _abort_events[op_id] = abort_event
+
+    try:
+        # Resolve subscription key → ID
+        subscription_id = get_subscription_id_from_key(token, subscription_key)
+        if not subscription_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Subscription key '{subscription_key}' not found"
+            )
+        print(f"[DEBUG] Subscription ID: {subscription_id} (key: {subscription_key})", flush=True)
+
+        # Parse CSV
+        content = await file.read()
+        devices = parse_csv_serials(content)
+        if not devices:
+            raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
+
+        print(f"[INFO] Starting concurrent UUID lookup for {len(devices)} devices...", flush=True)
+        start_lookup = time.time()
+
+        # ── Phase 1: Concurrent UUID lookups ─────────────────────────────────
+        sem = asyncio.Semaphore(_ASSIGN_LOOKUP_CONCURRENCY)
+
+        async def _throttled_lookup(serial: str):
+            async with sem:
+                return await _async_lookup_device_uuid(token, serial, abort_event)
+
+        lookup_results = await asyncio.gather(
+            *[_throttled_lookup(d['serial']) for d in devices]
+        )
+
+        elapsed_lookup = time.time() - start_lookup
+        print(f"[INFO] UUID lookup done in {elapsed_lookup:.2f}s", flush=True)
+
+        # Build serial → uuid map; collect not-found
+        device_map: dict[str, str] = {}
+        not_found_serials: list[str] = []
+        for lr in lookup_results:
+            if lr.get('aborted'):
+                not_found_serials.append(lr['serial'])  # treated as skipped
+            elif lr.get('uuid'):
+                device_map[lr['serial']] = lr['uuid']
+            else:
+                not_found_serials.append(lr['serial'])
+
+        results: dict = {
+            'operation_id': op_id,
+            'total': len(devices),
+            'successful': 0,
+            'failed': 0,
+            'aborted': False,
+            'details': [],
+            'lookup_time_seconds': round(elapsed_lookup, 2),
+            'failure_report': [],  # detailed per-device failure info
+        }
+
+        # Mark not-found devices as failed
+        for serial in not_found_serials:
+            results['failed'] += 1
+            detail = {
+                'serial': serial,
+                'success': False,
+                'error': 'Device not found (UUID lookup failed)',
+            }
+            results['details'].append(detail)
+            results['failure_report'].append({
+                **detail,
+                'phase': 'uuid_lookup',
+                'subscription_key': subscription_key,
+            })
+
+        if not device_map:
+            results['aborted'] = abort_event.is_set()
+            return JSONResponse(content=results)
+
+        # ── Phase 2: Concurrent PATCH subscription ────────────────────────────
+        # PATCH endpoints are rate-limited much more tightly than GETs.
+        # Use a separate, smaller semaphore (_ASSIGN_PATCH_CONCURRENCY=3).
+        print(f"[INFO] Patching subscription on {len(device_map)} devices "
+              f"(max {_ASSIGN_PATCH_CONCURRENCY} concurrent, up to {_MAX_RETRY_429} retries on 429)...", flush=True)
+        start_patch = time.time()
+        patch_sem = asyncio.Semaphore(_ASSIGN_PATCH_CONCURRENCY)
+
+        async def _throttled_patch(serial: str, uuid: str):
+            async with patch_sem:
+                return await _async_patch_subscription(token, serial, uuid, subscription_id, abort_event)
+
+        patch_results = await asyncio.gather(
+            *[_throttled_patch(s, u) for s, u in device_map.items()]
+        )
+
+        elapsed_patch = time.time() - start_patch
+        print(f"[INFO] PATCH phase done in {elapsed_patch:.2f}s", flush=True)
+
+        for pr in patch_results:
+            if pr.get('aborted'):
+                results['aborted'] = True
+                results['failed'] += 1
+                results['details'].append({'serial': pr['serial'], 'success': False, 'error': 'Aborted'})
+            elif pr.get('success'):
                 results['successful'] += 1
-                results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                
-            elif response.status_code == 202:
-                # Async operation - check progress
-                progress_url = response.headers.get('location', '')
-                print(f"[DEBUG] Async accepted. Location: {progress_url}")
-                
-                if progress_url:
-                    async_result = check_async_progress(token, progress_url)
-                    
-                    if async_result['success'] is True:
-                        results['successful'] += 1
-                        results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                    elif async_result['success'] is False:
-                        results['failed'] += 1
-                        results['details'].append({'serial': serial, 'success': False, 'error': async_result['details']})
-                    else:
-                        # Still processing
-                        results['successful'] += 1
-                        results['details'].append({'serial': serial, 'success': True, 'status': 'Processing (check later)'})
-                else:
-                    # 202 but no location header - try to get transactionId from body
-                    try:
-                        resp_data = response.json()
-                        txn_id = resp_data.get('transactionId', '')
-                        if txn_id:
-                            progress_url = f"{API_ENDPOINT}/async-operations/v1/async-operations/{txn_id}"
-                            async_result = check_async_progress(token, progress_url)
-                            
-                            if async_result['success'] is True:
-                                results['successful'] += 1
-                                results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                            elif async_result['success'] is False:
-                                results['failed'] += 1
-                                results['details'].append({'serial': serial, 'success': False, 'error': async_result['details']})
-                            else:
-                                results['successful'] += 1
-                                results['details'].append({'serial': serial, 'success': True, 'status': 'Processing'})
-                        else:
-                            results['successful'] += 1
-                            results['details'].append({'serial': serial, 'success': True, 'status': '202 Accepted'})
-                    except:
-                        results['successful'] += 1
-                        results['details'].append({'serial': serial, 'success': True, 'status': '202 Accepted'})
+                results['details'].append({'serial': pr['serial'], 'success': True, 'status': pr.get('status', 'Completed')})
             else:
                 results['failed'] += 1
-                error_msg = f"HTTP {response.status_code}"
-                try:
-                    error_data = response.json()
-                    error_msg = error_data.get('message', error_data.get('description', str(error_data)))
-                except:
-                    error_msg = response.text[:200] if response.text else error_msg
-                
-                results['details'].append({'serial': serial, 'success': False, 'error': error_msg})
-        
-        except Exception as e:
-            results['failed'] += 1
-            results['details'].append({'serial': serial, 'success': False, 'error': str(e)})
-        
-        time.sleep(0.5)
-    
-    # Add not-found serials
-    for device_info in devices:
-        serial = device_info['serial']
-        if serial not in device_map:
-            results['failed'] += 1
-            results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found'})
-    
-    return JSONResponse(content=results)
+                simple = {'serial': pr['serial'], 'success': False, 'error': pr.get('error', 'Unknown error')}
+                results['details'].append(simple)
+                # Rich failure report entry
+                results['failure_report'].append({
+                    'serial': pr['serial'],
+                    'phase': 'subscription_patch',
+                    'http_status': pr.get('http_status'),
+                    'raw_response': pr.get('raw_response', ''),
+                    'device_uuid': pr.get('device_uuid', device_map.get(pr['serial'])),
+                    'subscription_id': pr.get('subscription_id', subscription_id),
+                    'subscription_key': subscription_key,
+                    'async_status': pr.get('async_status'),
+                    'async_result': pr.get('async_result'),
+                    'error': pr.get('error', 'Unknown error'),
+                    'exception': pr.get('exception', False),
+                })
+
+        results['patch_time_seconds'] = round(elapsed_patch, 2)
+        results['total_time_seconds'] = round(elapsed_lookup + elapsed_patch, 2)
+        results['aborted'] = abort_event.is_set()
+
+        return JSONResponse(content=results)
+
+    finally:
+        _abort_events.pop(op_id, None)
+
+
+@router.delete("/abort/{operation_id}")
+async def abort_operation(operation_id: str):
+    """Signal any in-flight bulk operation to stop gracefully after its current item."""
+    event = _abort_events.get(operation_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active operation '{operation_id}' found (may have already completed)."
+        )
+    event.set()
+    print(f"[INFO] Abort requested for operation {operation_id}", flush=True)
+    return JSONResponse(content={'message': f'Abort signal sent to operation {operation_id}'})
 
 
 # ============================================================
@@ -399,78 +634,146 @@ async def bulk_assign_subscription(
 # ============================================================
 
 @router.post("/unassign-subscription")
-async def bulk_unassign_subscription(file: UploadFile = File(...)):
-    """Bulk remove subscriptions from devices."""
+async def bulk_unassign_subscription(
+    file: UploadFile = File(...),
+    operation_id: Optional[str] = Form(None),
+):
+    """Bulk remove subscriptions from devices.
+    Concurrent UUID lookup + async PATCH with 429 retry + abort support.
+    """
     client = get_glp_client()
     if not client:
         raise HTTPException(status_code=401, detail="Client not configured")
-    
-    token = get_token(client)
-    content = await file.read()
-    devices = parse_csv_serials(content)
-    
-    if not devices:
-        raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
-    
-    results = {'total': len(devices), 'successful': 0, 'failed': 0, 'details': []}
-    url = f"{API_ENDPOINT}/devices/v1beta1/devices"
-    
-    for device_info in devices:
-        serial = device_info['serial']
-        device = get_device_by_serial(token, serial)
-        if not device or not device.get('id'):
-            results['failed'] += 1
-            results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found'})
-            continue
-        
-        device_uuid = device['id']
-        
-        try:
-            headers = get_auth_headers(token, "application/merge-patch+json")
-            params = {"id": device_uuid}
-            # Empty subscription array to unassign
-            payload = {"subscription": []}
-            
-            response = requests.patch(url, headers=headers, params=params, json=payload, timeout=30)
-            
-            print(f"[DEBUG] Unassign {serial}: Status {response.status_code}")
-            
-            if response.status_code == 200:
-                results['successful'] += 1
-                results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-            elif response.status_code == 202:
-                progress_url = response.headers.get('location', '')
-                if progress_url:
-                    async_result = check_async_progress(token, progress_url)
-                    if async_result['success'] is True:
-                        results['successful'] += 1
-                        results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                    elif async_result['success'] is False:
-                        results['failed'] += 1
-                        results['details'].append({'serial': serial, 'success': False, 'error': async_result['details']})
-                    else:
-                        results['successful'] += 1
-                        results['details'].append({'serial': serial, 'success': True, 'status': 'Processing'})
+
+    op_id = operation_id or str(_uuid.uuid4())
+    abort_event = asyncio.Event()
+    _abort_events[op_id] = abort_event
+
+    try:
+        token = get_token(client)
+        content = await file.read()
+        devices = parse_csv_serials(content)
+
+        if not devices:
+            raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
+
+        # Phase 1: Concurrent UUID lookups
+        lu_sem = asyncio.Semaphore(_ASSIGN_LOOKUP_CONCURRENCY)
+
+        async def _lu(serial):
+            async with lu_sem:
+                return await _async_lookup_device_uuid(token, serial, abort_event)
+
+        lookup_results = await asyncio.gather(*[_lu(d['serial']) for d in devices])
+
+        results = {
+            'operation_id': op_id, 'total': len(devices),
+            'successful': 0, 'failed': 0, 'aborted': False,
+            'details': [], 'failure_report': [],
+        }
+
+        device_map: dict[str, str] = {}
+        for lr in lookup_results:
+            if lr.get('aborted') or not lr.get('uuid'):
+                results['failed'] += 1
+                err = 'Aborted' if lr.get('aborted') else 'Device not found'
+                results['details'].append({'serial': lr['serial'], 'success': False, 'error': err})
+                results['failure_report'].append({'serial': lr['serial'], 'phase': 'uuid_lookup', 'error': err})
+            else:
+                device_map[lr['serial']] = lr['uuid']
+
+        if not device_map:
+            results['aborted'] = abort_event.is_set()
+            return JSONResponse(content=results)
+
+        # Phase 2: Concurrent PATCH (empty subscription = unassign) with 429 retry
+        patch_sem = asyncio.Semaphore(_ASSIGN_PATCH_CONCURRENCY)
+
+        async def _unassign_patch(serial, uuid):
+            if abort_event.is_set():
+                return {'serial': serial, 'success': False, 'aborted': True, 'error': 'Aborted'}
+            async with patch_sem:
+                url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+                headers = get_auth_headers(token, "application/merge-patch+json")
+                params = {"id": uuid}
+                payload = {"subscription": []}
+                last_resp = None
+                for attempt in range(1, _MAX_RETRY_429 + 1):
+                    if abort_event.is_set():
+                        return {'serial': serial, 'success': False, 'aborted': True, 'error': 'Aborted'}
+                    try:
+                        async with httpx.AsyncClient(timeout=30) as hc:
+                            resp = await hc.patch(url, headers=headers, params=params, json=payload)
+                        last_resp = resp
+                        print(f"[DEBUG] Unassign {serial}: HTTP {resp.status_code} (attempt {attempt})", flush=True)
+                        if resp.status_code == 429:
+                            retry_after = resp.headers.get('Retry-After')
+                            wait = int(retry_after) if retry_after and retry_after.isdigit() \
+                                   else _RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+                            print(f"[WARN] 429 on unassign {serial}, wait {wait}s", flush=True)
+                            await asyncio.sleep(wait)
+                            continue
+                        break
+                    except Exception as e:
+                        return {'serial': serial, 'success': False, 'error': str(e),
+                                'device_uuid': uuid, 'exception': True}
                 else:
-                    results['successful'] += 1
-                    results['details'].append({'serial': serial, 'success': True, 'status': '202 Accepted'})
+                    return {'serial': serial, 'success': False,
+                            'error': f'Rate-limited after {_MAX_RETRY_429} retries',
+                            'http_status': 429, 'device_uuid': uuid}
+
+                resp = last_resp
+                if resp.status_code == 200:
+                    return {'serial': serial, 'success': True, 'status': 'Completed'}
+                elif resp.status_code == 202:
+                    prog = resp.headers.get('location', '')
+                    if prog:
+                        loop = asyncio.get_event_loop()
+                        ar = await loop.run_in_executor(None, check_async_progress, token, prog)
+                        if ar['success'] is True:
+                            return {'serial': serial, 'success': True, 'status': 'Completed'}
+                        elif ar['success'] is False:
+                            return {'serial': serial, 'success': False, 'error': ar['details'],
+                                    'http_status': 202, 'device_uuid': uuid}
+                        return {'serial': serial, 'success': True, 'status': 'Processing'}
+                    return {'serial': serial, 'success': True, 'status': '202 Accepted'}
+                else:
+                    err = f"HTTP {resp.status_code}"
+                    try:
+                        err = resp.json().get('message', err)
+                    except Exception:
+                        pass
+                    return {'serial': serial, 'success': False, 'error': err,
+                            'http_status': resp.status_code, 'device_uuid': uuid}
+
+        patch_results = await asyncio.gather(
+            *[_unassign_patch(s, u) for s, u in device_map.items()]
+        )
+
+        for pr in patch_results:
+            if pr.get('aborted'):
+                results['aborted'] = True
+                results['failed'] += 1
+                results['details'].append({'serial': pr['serial'], 'success': False, 'error': 'Aborted'})
+            elif pr.get('success'):
+                results['successful'] += 1
+                results['details'].append({'serial': pr['serial'], 'success': True,
+                                           'status': pr.get('status', 'Completed')})
             else:
                 results['failed'] += 1
-                error_msg = f"HTTP {response.status_code}"
-                try:
-                    error_data = response.json()
-                    error_msg = error_data.get('message', str(error_data))
-                except:
-                    pass
-                results['details'].append({'serial': serial, 'success': False, 'error': error_msg})
-        
-        except Exception as e:
-            results['failed'] += 1
-            results['details'].append({'serial': serial, 'success': False, 'error': str(e)})
-        
-        time.sleep(0.5)
-    
-    return JSONResponse(content=results)
+                results['details'].append({'serial': pr['serial'], 'success': False,
+                                           'error': pr.get('error', 'Unknown error')})
+                results['failure_report'].append({
+                    'serial': pr['serial'], 'phase': 'unassign_patch',
+                    'http_status': pr.get('http_status'),
+                    'device_uuid': pr.get('device_uuid'),
+                    'error': pr.get('error'),
+                })
+
+        results['aborted'] = abort_event.is_set()
+        return JSONResponse(content=results)
+    finally:
+        _abort_events.pop(op_id, None)
 
 
 # ============================================================
@@ -481,129 +784,157 @@ async def bulk_unassign_subscription(file: UploadFile = File(...)):
 async def bulk_transfer_devices(
     application_id: str = Form(...),
     region: str = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    operation_id: Optional[str] = Form(None),
 ):
-    """Bulk transfer devices to an application using raw requests."""
+    """Bulk transfer devices to an application. Supports abort and 429 retry."""
     client = get_glp_client()
     if not client:
         raise HTTPException(status_code=401, detail="Client not configured")
-    
-    token = get_token(client)
-    content = await file.read()
-    devices = parse_csv_serials(content)
-    
-    if not devices:
-        raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
-    
-    # Extract only serials for batch processing compatibility
-    serials = [d['serial'] for d in devices]
-    
-    results = {'total': len(devices), 'successful': 0, 'failed': 0, 'details': []}
-    url = f"{API_ENDPOINT}/devices/v1beta1/devices"
-    
-    # Process in batches of 5 (API limit)
-    batch_size = 5
-    for i in range(0, len(serials), batch_size):
-        batch = serials[i:i+batch_size]
-        batch_devices = []  # (serial, uuid) pairs
-        
-        for serial in batch:
-            device = get_device_by_serial(token, serial)
-            if device and device.get('id'):
-                batch_devices.append((serial, device['id']))
-            else:
-                results['failed'] += 1
-                results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found'})
-        
-        if not batch_devices:
-            continue
-        
-        # Multiple device IDs as repeated query params
-        batch_uuids = [uuid for _, uuid in batch_devices]
-        batch_serials = [s for s, _ in batch_devices]
-        
-        try:
-            headers = get_auth_headers(token, "application/merge-patch+json")
-            # Use list of tuples for multiple id params
-            params = [("id", uuid) for uuid in batch_uuids]
-            payload = {
-                "application": {"id": application_id},
-                "region": region
-            }
-            
-            print(f"[DEBUG] Transfer batch: {batch_serials}")
-            print(f"[DEBUG] PATCH {url} with {len(batch_uuids)} device(s)")
-            
-            response = requests.patch(url, headers=headers, params=params, json=payload, timeout=30)
-            
-            print(f"[DEBUG] Transfer response: {response.status_code}")
-            print(f"[DEBUG] Response body: {response.text[:500]}")
-            
+
+    op_id = operation_id or str(_uuid.uuid4())
+    abort_event = asyncio.Event()
+    _abort_events[op_id] = abort_event
+
+    try:
+        token = get_token(client)
+        content = await file.read()
+        devices = parse_csv_serials(content)
+
+        if not devices:
+            raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
+
+        serials = [d['serial'] for d in devices]
+        results = {
+            'operation_id': op_id, 'total': len(devices),
+            'successful': 0, 'failed': 0, 'aborted': False,
+            'details': [], 'failure_report': [],
+        }
+        url = f"{API_ENDPOINT}/devices/v1beta1/devices"
+        batch_size = 5
+
+        for i in range(0, len(serials), batch_size):
+            if abort_event.is_set():
+                results['aborted'] = True
+                for serial in serials[i:]:
+                    results['failed'] += 1
+                    results['details'].append({'serial': serial, 'success': False, 'error': 'Aborted'})
+                break
+
+            batch = serials[i:i + batch_size]
+            batch_devices = []
+            for serial in batch:
+                device = get_device_by_serial(token, serial)
+                if device and device.get('id'):
+                    batch_devices.append((serial, device['id']))
+                else:
+                    results['failed'] += 1
+                    results['details'].append({'serial': serial, 'success': False, 'error': 'Device not found'})
+
+            if not batch_devices:
+                continue
+
+            batch_uuids = [uid for _, uid in batch_devices]
+            batch_serials = [s for s, _ in batch_devices]
+
+            # 429 retry on batch PATCH
+            last_resp = None
+            patch_ok = False
+            for attempt in range(1, _MAX_RETRY_429 + 1):
+                if abort_event.is_set():
+                    break
+                try:
+                    headers = get_auth_headers(token, "application/merge-patch+json")
+                    params = [("id", uid) for uid in batch_uuids]
+                    payload = {"application": {"id": application_id}, "region": region}
+                    print(f"[DEBUG] Transfer batch {batch_serials} (attempt {attempt})", flush=True)
+                    response = requests.patch(url, headers=headers, params=params, json=payload, timeout=30)
+                    last_resp = response
+                    if response.status_code == 429:
+                        retry_after = response.headers.get('Retry-After')
+                        wait = int(retry_after) if retry_after and retry_after.isdigit() \
+                               else _RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+                        print(f"[WARN] 429 on transfer batch, wait {wait}s", flush=True)
+                        time.sleep(wait)
+                        continue
+                    patch_ok = True
+                    break
+                except Exception as e:
+                    for serial in batch_serials:
+                        results['failed'] += 1
+                        results['details'].append({'serial': serial, 'success': False, 'error': str(e)})
+                    last_resp = None
+                    break
+
+            if abort_event.is_set():
+                for serial in batch_serials:
+                    results['failed'] += 1
+                    results['details'].append({'serial': serial, 'success': False, 'error': 'Aborted'})
+                results['aborted'] = True
+                break
+
+            if last_resp is None:
+                if i + batch_size < len(serials):
+                    time.sleep(12)
+                continue
+
+            if not patch_ok:
+                err = f'Rate-limited (HTTP 429) after {_MAX_RETRY_429} retries'
+                for serial in batch_serials:
+                    results['failed'] += 1
+                    results['details'].append({'serial': serial, 'success': False, 'error': err})
+                    results['failure_report'].append({'serial': serial, 'phase': 'batch_patch',
+                                                      'http_status': 429, 'error': err})
+                if i + batch_size < len(serials):
+                    time.sleep(12)
+                continue
+
+            response = last_resp
             if response.status_code == 200:
                 results['successful'] += len(batch_serials)
                 for serial in batch_serials:
                     results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                    
+
             elif response.status_code == 202:
-                # Check async progress
                 progress_url = response.headers.get('location', '')
-                
                 if not progress_url:
                     try:
-                        resp_data = response.json()
-                        txn_id = resp_data.get('transactionId', '')
+                        txn_id = response.json().get('transactionId', '')
                         if txn_id:
                             progress_url = f"{API_ENDPOINT}/async-operations/v1/async-operations/{txn_id}"
-                    except:
+                    except Exception:
                         pass
-                
                 if progress_url:
-                    print(f"[DEBUG] Checking async progress: {progress_url}")
                     async_result = check_async_progress(token, progress_url, max_wait=60)
-                    
-                    # Create UUID to Serial map for this batch
-                    uuid_to_serial = {uuid: s for s, uuid in batch_devices}
-                    
+                    uuid_to_serial = {uid: s for s, uid in batch_devices}
                     if async_result['status'] in ['COMPLETED', 'SUCCEEDED', 'SUCCESS']:
                         results['successful'] += len(batch_serials)
                         for serial in batch_serials:
                             results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                            
                     elif async_result['status'] in ['FAILED', 'ERROR']:
                         result_data = async_result.get('result', {})
-                        succeeded = result_data.get('succeededDevices', [])
-                        failed = result_data.get('failedDevices', [])
-                        
-                        # Handle successes
-                        if succeeded and isinstance(succeeded, list):
-                            for uuid in succeeded:
-                                if uuid in uuid_to_serial:
-                                    serial = uuid_to_serial[uuid]
-                                    results['successful'] += 1
-                                    results['details'].append({'serial': serial, 'success': True, 'status': 'Completed'})
-                        
-                        # Handle failures
-                        if failed and isinstance(failed, list):
-                            for uuid in failed:
-                                if uuid in uuid_to_serial:
-                                    serial = uuid_to_serial[uuid]
-                                    results['failed'] += 1
-                                    # Try to find specific error if available or use generic
-                                    error_msg = async_result.get('details', 'Transfer failed')
-                                    results['details'].append({'serial': serial, 'success': False, 'error': error_msg})
-                        
-                        # Fallback for devices not covered
-                        processed_uuids = set(succeeded if isinstance(succeeded, list) else []) | \
-                                          set(failed if isinstance(failed, list) else [])
-                                          
-                        for uuid, serial in uuid_to_serial.items():
-                            if uuid not in processed_uuids:
+                        succeeded = result_data.get('succeededDevices', []) or []
+                        failed_uuids = result_data.get('failedDevices', []) or []
+                        processed = set()
+                        for uid in succeeded:
+                            if uid in uuid_to_serial:
+                                results['successful'] += 1
+                                results['details'].append({'serial': uuid_to_serial[uid], 'success': True, 'status': 'Completed'})
+                                processed.add(uid)
+                        for uid in failed_uuids:
+                            if uid in uuid_to_serial:
+                                err = async_result.get('details', 'Transfer failed')
                                 results['failed'] += 1
-                                results['details'].append({
-                                    'serial': serial, 
-                                    'success': False, 
-                                    'error': async_result.get('details', 'Start Async Failed')
-                                })
+                                results['details'].append({'serial': uuid_to_serial[uid], 'success': False, 'error': err})
+                                results['failure_report'].append({'serial': uuid_to_serial[uid],
+                                                                  'phase': 'async_transfer', 'http_status': 202,
+                                                                  'error': err, 'device_uuid': uid})
+                                processed.add(uid)
+                        for uid, s in uuid_to_serial.items():
+                            if uid not in processed:
+                                err = async_result.get('details', 'Async transfer failed')
+                                results['failed'] += 1
+                                results['details'].append({'serial': s, 'success': False, 'error': err})
                     else:
                         results['successful'] += len(batch_serials)
                         for serial in batch_serials:
@@ -613,35 +944,31 @@ async def bulk_transfer_devices(
                     for serial in batch_serials:
                         results['details'].append({'serial': serial, 'success': True, 'status': '202 Accepted'})
             else:
-                results['failed'] += len(batch_serials)
                 error_msg = f"HTTP {response.status_code}"
                 try:
-                    error_data = response.json()
-                    error_msg = error_data.get('message', str(error_data))
-                except:
+                    error_msg = response.json().get('message', error_msg)
+                except Exception:
                     error_msg = response.text[:200] if response.text else error_msg
-                
+                results['failed'] += len(batch_serials)
                 for serial in batch_serials:
                     results['details'].append({'serial': serial, 'success': False, 'error': error_msg})
-        
-        except Exception as e:
-            results['failed'] += len(batch_serials)
-            for serial in batch_serials:
-                results['details'].append({'serial': serial, 'success': False, 'error': str(e)})
-        
-        # Rate limiting between batches
-        if i + batch_size < len(serials):
-            time.sleep(12)
-    
-    return JSONResponse(content=results)
+                    results['failure_report'].append({'serial': serial, 'phase': 'batch_patch',
+                                                      'http_status': response.status_code, 'error': error_msg})
+
+            if i + batch_size < len(serials):
+                time.sleep(12)
+
+        results['aborted'] = abort_event.is_set()
+        return JSONResponse(content=results)
+    finally:
+        _abort_events.pop(op_id, None)
+
 
 
 # ============================================================
 # TRANSFER WORKSPACES (Source -> Destination) - ASYNC OPTIMIZED
 # ============================================================
 
-import asyncio
-import httpx
 from pycentral import NewCentralBase
 from pycentral.glp.devices import Devices as GLPDevices
 

@@ -75,6 +75,106 @@
         width: 0%;
         transition: width 0.3s;
     }
+
+    #abortBtn {
+        display: none;
+        background: linear-gradient(135deg, #c0392b, #e74c3c);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-left: 10px;
+        font-weight: 600;
+        transition: opacity 0.2s;
+    }
+    #abortBtn:hover { opacity: 0.85; }
+
+    .failure-report-panel {
+        margin-top: 20px;
+        border: 1px solid rgba(231,76,60,0.4);
+        border-radius: 8px;
+        overflow: hidden;
+        display: none;
+    }
+    .failure-report-header {
+        background: rgba(231,76,60,0.15);
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        user-select: none;
+    }
+    .failure-report-header h4 { margin: 0; color: #e74c3c; }
+    .failure-report-body { padding: 0 16px 16px; }
+    .failure-report-body table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+    .failure-report-body th, .failure-report-body td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        vertical-align: top;
+    }
+    .failure-report-body th { color: rgba(255,255,255,0.5); font-weight: 500; }
+    .failure-report-body td.mono { font-family: monospace; font-size: 0.82em; word-break: break-all; color: rgba(255,255,255,0.7); }
+    .timing-badge {
+        display: inline-block;
+        background: rgba(76,209,55,0.15);
+        border: 1px solid rgba(76,209,55,0.3);
+        color: #4cd137;
+        border-radius: 12px;
+        padding: 3px 10px;
+        font-size: 0.8em;
+        margin-left: 8px;
+    }
+    .aborted-banner {
+        background: rgba(231,76,60,0.12);
+        border: 1px solid rgba(231,76,60,0.3);
+        border-radius: 6px;
+        padding: 8px 14px;
+        color: #e74c3c;
+        margin-bottom: 10px;
+        display: none;
+    }
+
+    /* CSV Preview */
+    .csv-preview-panel {
+        margin: 12px 0;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 8px;
+        overflow: hidden;
+        display: none;
+    }
+    .csv-preview-header {
+        background: rgba(76,209,55,0.08);
+        padding: 8px 14px;
+        font-size: 0.85em;
+        color: rgba(255,255,255,0.6);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .csv-preview-header span { color: #4cd137; font-weight: 600; }
+    .csv-preview-scroll { overflow-x: auto; max-height: 180px; overflow-y: auto; }
+    .csv-preview-scroll table { width: 100%; border-collapse: collapse; font-size: 0.82em; white-space: nowrap; }
+    .csv-preview-scroll th {
+        background: rgba(255,255,255,0.06);
+        padding: 6px 12px;
+        text-align: left;
+        color: rgba(255,255,255,0.5);
+        font-weight: 500;
+        position: sticky;
+        top: 0;
+    }
+    .csv-preview-scroll td {
+        padding: 5px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        color: rgba(255,255,255,0.8);
+        font-family: monospace;
+        font-size: 0.9em;
+    }
+    .csv-preview-scroll tr:last-child td { border-bottom: none; }
 </style>
 {% endblock %}
 
@@ -99,6 +199,17 @@
         <p style="font-size: 0.85em; color: rgba(255,255,255,0.6);">CSV must contain "Serial Number" (or "Key" for subscriptions) column</p>
         <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
         <p id="selectedFile" style="color: #4cd137; margin-top: 10px; display: none;"></p>
+    </div>
+
+    <!-- CSV Preview -->
+    <div class="csv-preview-panel" id="csvPreviewPanel">
+        <div class="csv-preview-header">
+            <span id="csvPreviewLabel">Preview</span>
+            <span id="csvPreviewCount" style="color:rgba(255,255,255,0.4); font-size:0.9em;"></span>
+        </div>
+        <div class="csv-preview-scroll">
+            <table id="csvPreviewTable"><thead id="csvPreviewHead"></thead><tbody id="csvPreviewBody"></tbody></table>
+        </div>
     </div>
 
     <!-- Operation-specific fields -->
@@ -157,24 +268,30 @@
         <div class="progress-fill" id="progressFill"></div>
     </div>
 
-    <!-- Execute Button -->
-    <button class="btn-primary" id="executeBtn" disabled>
-        <span id="btnText">Upload CSV to Continue</span>
-        <span id="btnSpinner" style="display: none;">Processing...</span>
-    </button>
+    <!-- Execute / Abort Buttons -->
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button class="btn-primary" id="executeBtn" disabled>
+            <span id="btnText">Upload CSV to Continue</span>
+            <span id="btnSpinner" style="display: none;">Processing...</span>
+        </button>
+        <button id="abortBtn" title="Stop after current device">⏹ Abort</button>
+    </div>
 </div>
 
 <!-- Results -->
 <div class="card glass" id="resultsCard" style="display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h3>Results</h3>
+        <h3>Results
+            <span id="timingBadge" class="timing-badge" style="display:none;"></span>
+        </h3>
         <div>
             <span id="successCount" style="color: #27ae60; margin-right: 15px;"></span>
             <span id="failCount" style="color: #e74c3c;"></span>
-            <button class="btn-primary" style="margin-left: 15px; background: #27ae60;" onclick="exportResults()">Export
-                CSV</button>
+            <button class="btn-primary" style="margin-left: 15px; background: #27ae60;" onclick="exportResults()">Export CSV</button>
         </div>
     </div>
+
+    <div class="aborted-banner" id="abortedBanner">⚠️ Operation was aborted — remaining devices were skipped.</div>
 
     <table class="results-table">
         <thead>
@@ -186,6 +303,30 @@
         </thead>
         <tbody id="resultsBody"></tbody>
     </table>
+
+    <!-- Failure Report Panel -->
+    <div class="failure-report-panel" id="failureReportPanel">
+        <div class="failure-report-header" onclick="toggleFailureReport()">
+            <h4>🔍 Detailed Failure Report</h4>
+            <span id="failureReportToggle" style="color:rgba(255,255,255,0.5); font-size:0.85em;">▼ Show</span>
+        </div>
+        <div class="failure-report-body" id="failureReportBody" style="display:none;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Serial</th>
+                        <th>Phase</th>
+                        <th>HTTP</th>
+                        <th>Error</th>
+                        <th>Device UUID</th>
+                        <th>Sub ID</th>
+                        <th>Raw Response</th>
+                    </tr>
+                </thead>
+                <tbody id="failureReportRows"></tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -193,11 +334,13 @@
 <script>
     let selectedFile = null;
     let resultsData = null;
+    let currentOperationId = null;
 
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('csvFileInput');
     const operationType = document.getElementById('operationType');
     const executeBtn = document.getElementById('executeBtn');
+    const abortBtn = document.getElementById('abortBtn');
 
     // File handling
     dropzone.onclick = () => fileInput.click();
@@ -208,6 +351,7 @@
             document.getElementById('selectedFile').style.display = 'block';
             document.getElementById('btnText').innerText = 'Execute Operation';
             executeBtn.disabled = false;
+            renderCSVPreview(selectedFile);
         }
     };
 
@@ -222,6 +366,38 @@
         }
     };
 
+    // CSV Preview renderer
+    function renderCSVPreview(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) return;
+
+            // Parse using simple comma split (handles quoted fields roughly)
+            const parseRow = (line) => line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+
+            const headers = parseRow(lines[0]);
+            const dataRows = lines.slice(1, 6); // first 5 data rows
+            const total = lines.length - 1;
+
+            const thead = document.getElementById('csvPreviewHead');
+            const tbody = document.getElementById('csvPreviewBody');
+            thead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+            tbody.innerHTML = dataRows.map(row => {
+                const cells = parseRow(row);
+                return `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`;
+            }).join('');
+
+            document.getElementById('csvPreviewLabel').innerHTML =
+                `♥ <span>${file.name}</span>`;
+            document.getElementById('csvPreviewCount').textContent =
+                `Showing ${Math.min(5, total)} of ${total} row${total !== 1 ? 's' : ''}`;
+            document.getElementById('csvPreviewPanel').style.display = 'block';
+        };
+        reader.readAsText(file);
+    }
+
     // Operation type change
     operationType.onchange = () => {
         const op = operationType.value;
@@ -231,6 +407,23 @@
             op === 'transfer-devices' ? 'block' : 'none';
         document.getElementById('transferWorkspacesFields').style.display =
             (op === 'transfer-workspaces' || op === 'transfer-subscriptions') ? 'block' : 'none';
+        abortBtn.style.display = 'none';
+    };
+
+    // Abort handler
+    abortBtn.onclick = async () => {
+        if (!currentOperationId) return;
+        abortBtn.disabled = true;
+        abortBtn.textContent = '⏳ Aborting...';
+        try {
+            const r = await fetch(`/api/bulk/abort/${currentOperationId}`, { method: 'DELETE' });
+            if (!r.ok) {
+                const e = await r.json();
+                alert('Abort failed: ' + (e.detail || r.status));
+            }
+        } catch (e) {
+            alert('Abort request error: ' + e.message);
+        }
     };
 
     // Load applications for transfer
@@ -249,6 +442,14 @@
     }
     loadApplications();
 
+    // Generate a simple client-side UUID
+    function genUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+    }
+
     // Execute operation
     executeBtn.onclick = async () => {
         if (!selectedFile) return;
@@ -259,18 +460,12 @@
 
         if (op === 'assign-subscription') {
             const key = document.getElementById('subscriptionKey').value;
-            if (!key) {
-                alert('Please enter subscription key');
-                return;
-            }
+            if (!key) { alert('Please enter subscription key'); return; }
             formData.append('subscription_key', key);
         } else if (op === 'transfer-devices') {
             const appId = document.getElementById('applicationId').value;
             const region = document.getElementById('region').value;
-            if (!appId || !region) {
-                alert('Please select application and enter region');
-                return;
-            }
+            if (!appId || !region) { alert('Please select application and enter region'); return; }
             formData.append('application_id', appId);
             formData.append('region', region);
         } else if (op === 'transfer-workspaces' || op === 'transfer-subscriptions') {
@@ -278,16 +473,19 @@
             const sSecret = document.getElementById('sourceClientSecret').value;
             const dId = document.getElementById('destClientId').value;
             const dSecret = document.getElementById('destClientSecret').value;
-
-            if (!sId || !sSecret || !dId || !dSecret) {
-                alert('Please enter Source and Destination credentials');
-                return;
-            }
+            if (!sId || !sSecret || !dId || !dSecret) { alert('Please enter Source and Destination credentials'); return; }
             formData.append('source_client_id', sId);
             formData.append('source_client_secret', sSecret);
             formData.append('dest_client_id', dId);
             formData.append('dest_client_secret', dSecret);
         }
+
+        // Generate operation_id for ALL ops (abort works universally)
+        currentOperationId = genUUID();
+        formData.append('operation_id', currentOperationId);
+        abortBtn.style.display = 'inline-block';
+        abortBtn.disabled = false;
+        abortBtn.textContent = '⏹ Abort';
 
         // Show progress
         executeBtn.disabled = true;
@@ -297,26 +495,22 @@
         document.getElementById('progressFill').style.width = '50%';
 
         try {
-            const res = await fetch(`/api/bulk/${op}`, {
-                method: 'POST',
-                body: formData
-            });
-
+            const res = await fetch(`/api/bulk/${op}`, { method: 'POST', body: formData });
             if (!res.ok) {
                 const err = await res.json();
                 throw new Error(err.detail || 'Operation failed');
             }
-
             resultsData = await res.json();
             displayResults(resultsData);
             document.getElementById('progressFill').style.width = '100%';
-
         } catch (error) {
             alert('Error: ' + error.message);
         } finally {
             executeBtn.disabled = false;
             document.getElementById('btnText').style.display = 'inline';
             document.getElementById('btnSpinner').style.display = 'none';
+            abortBtn.style.display = 'none';
+            currentOperationId = null;
             setTimeout(() => {
                 document.getElementById('progress').style.display = 'none';
                 document.getElementById('progressFill').style.width = '0%';
@@ -330,6 +524,19 @@
 
         resultsBody.innerHTML = '';
         resultsCard.style.display = 'block';
+
+        // Timing badge (assign-subscription returns this)
+        const timingBadge = document.getElementById('timingBadge');
+        if (data.total_time_seconds !== undefined) {
+            timingBadge.textContent = `⚡ ${data.total_time_seconds}s total`;
+            timingBadge.style.display = 'inline-block';
+        } else {
+            timingBadge.style.display = 'none';
+        }
+
+        // Aborted banner
+        const abortedBanner = document.getElementById('abortedBanner');
+        abortedBanner.style.display = data.aborted ? 'block' : 'none';
 
         // Set counts
         const successful = data.successful || data.results?.filter(r => r.found || r.success).length || 0;
@@ -346,19 +553,15 @@
 
             let details = '';
             if (item.data) {
-                details = `
-                    ID: ${item.data.id?.substring(0, 8)}... | 
-                    Model: ${item.data.model} | 
-                    Status: ${item.data.status}
-                `;
+                details = `ID: ${item.data.id?.substring(0, 8)}... | Model: ${item.data.model} | Status: ${item.data.status}`;
             } else if (item.error) {
                 details = item.error;
             } else if (item.status) {
-                details = `HTTP ${item.status}`;
+                details = item.status;
             }
 
             tr.innerHTML = `
-                <td>${item.serial}</td>
+                <td>${item.serial || item.key || '—'}</td>
                 <td><span class="status-badge status-${isSuccess ? 'success' : 'failed'}">
                     ${isSuccess ? 'Success' : 'Failed'}
                 </span></td>
@@ -367,20 +570,71 @@
             resultsBody.appendChild(tr);
         });
 
+        // Failure report panel
+        const failureReport = data.failure_report || [];
+        const panel = document.getElementById('failureReportPanel');
+        const reportRows = document.getElementById('failureReportRows');
+
+        if (failureReport.length > 0) {
+            panel.style.display = 'block';
+            reportRows.innerHTML = '';
+            failureReport.forEach(f => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="mono">${f.serial || '—'}</td>
+                    <td>${f.phase || '—'}</td>
+                    <td>${f.http_status !== null && f.http_status !== undefined ? f.http_status : '—'}</td>
+                    <td style="color:#e74c3c; max-width:200px;">${f.error || '—'}</td>
+                    <td class="mono">${f.device_uuid ? f.device_uuid.substring(0,12)+'...' : '—'}</td>
+                    <td class="mono">${f.subscription_id ? f.subscription_id.substring(0,12)+'...' : '—'}</td>
+                    <td class="mono" style="max-width:180px; overflow:hidden;">${(f.raw_response || '').substring(0,120) || '—'}</td>
+                `;
+                reportRows.appendChild(tr);
+            });
+        } else {
+            panel.style.display = 'none';
+        }
+
         feather.replace();
+    }
+
+    function toggleFailureReport() {
+        const body = document.getElementById('failureReportBody');
+        const toggle = document.getElementById('failureReportToggle');
+        const shown = body.style.display !== 'none';
+        body.style.display = shown ? 'none' : 'block';
+        toggle.textContent = shown ? '▼ Show' : '▲ Hide';
     }
 
     function exportResults() {
         if (!resultsData) return;
 
+        // Main results sheet
         let csv = 'Serial Number,Status,Details\n';
         const items = resultsData.results || resultsData.details || [];
-
         items.forEach(item => {
             const isSuccess = item.found !== undefined ? item.found : item.success;
-            const details = item.error || (item.data ? JSON.stringify(item.data) : '');
-            csv += `"${item.serial}","${isSuccess ? 'Success' : 'Failed'}","${details.replace(/"/g, '""')}"\n`;
+            const details = item.error || (item.data ? JSON.stringify(item.data) : (item.status || ''));
+            csv += `"${item.serial || item.key || ''}","${isSuccess ? 'Success' : 'Failed'}","${String(details).replace(/"/g, '""')}"\n`;
         });
+
+        // Failure report appended as a second section
+        const fr = resultsData.failure_report || [];
+        if (fr.length > 0) {
+            csv += '\n\nDETAILED FAILURE REPORT\n';
+            csv += 'Serial,Phase,HTTP Status,Error,Device UUID,Subscription ID,Subscription Key,Raw Response\n';
+            fr.forEach(f => {
+                csv += [
+                    `"${f.serial || ''}"`,'"'+( f.phase||'')+'",',
+                    `"${f.http_status !== null && f.http_status !== undefined ? f.http_status : ''}",`,
+                    `"${String(f.error||'').replace(/"/g,'""')}",`,
+                    `"${f.device_uuid||''}",`,
+                    `"${f.subscription_id||''}",`,
+                    `"${f.subscription_key||''}",`,
+                    `"${String(f.raw_response||'').replace(/"/g,'""')}"`
+                ].join('') + '\n';
+            });
+        }
 
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);

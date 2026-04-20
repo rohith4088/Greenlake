@@ -257,6 +257,267 @@ async def validate_session(
 
 
 # ============================================================
+# QUERY WORKSPACES — bulk CSV, streaming NDJSON
+# ============================================================
+
+def _parse_workspace(cust: dict, search_string: str) -> dict:
+    """Extract a clean workspace profile from a raw customer API object."""
+    contact = cust.get("contact", {})
+    address = contact.get("address", {})
+    account = cust.get("account", {})
+    prefs   = cust.get("preferences", {})
+    return {
+        "search_string":        search_string,
+        "customer_id":          cust.get("customer_id", ""),
+        "company_name":         contact.get("company_name", ""),
+        "email":                contact.get("email", ""),
+        "created_by":           contact.get("created_by", ""),
+        "phone_number":         contact.get("phone_number", ""),
+        "account_type":         cust.get("account_type", account.get("account_type", "")),
+        "msp_id":               cust.get("msp_id", ""),
+        "status":               account.get("status", ""),
+        "operational_mode":     account.get("operational_mode", cust.get("operational_mode", "")),
+        "region":               cust.get("region", ""),
+        "organization_id":      cust.get("organization_id", ""),
+        "activate_customer_id": cust.get("activate_customer_id"),
+        "multi_fa_enabled":     prefs.get("multi_fa_enabled", False),
+        "created_at":           account.get("created_at", ""),
+        "updated_at":           account.get("updated_at", ""),
+        "address": {
+            "street":  contact.get("street_address", address.get("street_address", "")),
+            "city":    address.get("city", ""),
+            "state":   address.get("state_or_region", ""),
+            "zip":     address.get("zip", ""),
+            "country": address.get("country_code", ""),
+        },
+    }
+
+
+def _fetch_workspaces_for_string(
+    search_string: str, headers_: dict, endpoint: str, limit: int
+) -> dict:
+    """Synchronous worker: query the customers API for one search_string."""
+    try:
+        resp = requests.get(
+            endpoint,
+            headers=headers_,
+            params={"limit": limit, "offset": 0, "search_string": search_string.strip()},
+            timeout=30,
+        )
+        print(f"[CCS] QueryWS '{search_string}': HTTP {resp.status_code}")
+        if resp.status_code != 200:
+            error_msg = f"HTTP {resp.status_code}"
+            try:
+                err = resp.json()
+                error_msg = err.get("message", err.get("detail", str(err)))
+            except Exception:
+                error_msg = resp.text[:200] or error_msg
+            return {"search_string": search_string, "workspaces": [], "error": error_msg}
+        raw = resp.json().get("customers", [])
+        return {"search_string": search_string, "workspaces": [_parse_workspace(c, search_string) for c in raw], "error": None}
+    except Exception as e:
+        return {"search_string": search_string, "workspaces": [], "error": str(e)}
+
+
+@router.post("/query-workspaces")
+async def ccs_query_workspaces(
+    request: Request,
+    bearer_token: str = Form(...),
+    cookie:       str = Form(""),
+    base_url:     str = Form(API_BASE),
+    limit:        int = Form(10),
+    file: UploadFile = File(...),
+):
+    """
+    Bulk workspace lookup from a CSV file.
+    Accepted column names: Search String | Platform Customer ID | Customer ID | ID | Email | Company | Name
+    Each row = one search string. Deduplicates automatically.
+    Streams NDJSON: progress events per row, then a final 'complete' event with all results.
+    Requires an Aquila session base URL.
+    """
+    use_aquila = is_aquila_url(base_url)
+    if not use_aquila:
+        raise HTTPException(
+            status_code=400,
+            detail="Query Workspaces requires an Aquila session base URL (aquila-user-api.common.cloud.hpe.com)"
+        )
+
+    content = await file.read()
+    raw_strings = parse_csv_column(
+        content,
+        ["Search String", "search_string", "Platform Customer ID", "platform_customer_id",
+         "Customer ID", "customer_id", "ID", "id", "Email", "email",
+         "Company", "company", "Name", "name", "Workspace", "workspace"]
+    )
+    # Deduplicate while preserving order
+    seen: set = set()
+    unique_strings: List[str] = []
+    for s in raw_strings:
+        if s and s not in seen:
+            seen.add(s)
+            unique_strings.append(s)
+
+    if not unique_strings:
+        raise HTTPException(
+            status_code=400,
+            detail="No search strings found in CSV. Expected column: Search String, Platform Customer ID, ID, Email, or Company."
+        )
+
+    headers_  = make_headers(bearer_token, cookie, base_url=base_url)
+    endpoint  = f"{base_url}/support-assistant/v1alpha1/customers"
+    capped_limit = max(1, min(limit, 200))
+
+    async def event_generator():
+        start_time = time.time()
+        all_workspaces: list = []
+        found_count = 0
+        not_found_count = 0
+        error_count = 0
+        processed = 0
+        total = len(unique_strings)
+
+        yield json.dumps({
+            "type": "progress", "current": 0, "total": total,
+            "message": f"Starting bulk workspace query for {total} search string(s)\u2026"
+        }) + "\n"
+
+        MINI_BATCH = 50
+        MAX_WORKERS = 20
+        loop = asyncio.get_running_loop()
+
+        def _run_batch(b, h, ep, lim):
+            futures_map = {}
+            results_ = [None] * len(b)
+            with ThreadPoolExecutor(max_workers=min(len(b), MAX_WORKERS)) as ex:
+                for i, s in enumerate(b):
+                    futures_map[ex.submit(_fetch_workspaces_for_string, s, h, ep, lim)] = i
+                for fut in futures_map:
+                    idx = futures_map[fut]
+                    try:
+                        results_[idx] = fut.result()
+                    except Exception as e:
+                        results_[idx] = {"search_string": b[idx], "workspaces": [], "error": str(e)}
+            return results_
+
+        for batch_start in range(0, total, MINI_BATCH):
+            if await request.is_disconnected():
+                print(f"[CCS] Query Workspaces aborted at {processed}/{total}")
+                break
+
+            batch = unique_strings[batch_start: batch_start + MINI_BATCH]
+
+            batch_results = await loop.run_in_executor(
+                None, _run_batch, batch, headers_, endpoint, capped_limit
+            )
+
+            for res in batch_results:
+                processed += 1
+                ws_list = res["workspaces"]
+                err     = res["error"]
+                ss      = res["search_string"]
+
+                if err:
+                    error_count += 1
+                elif not ws_list:
+                    not_found_count += 1
+                else:
+                    found_count += len(ws_list)
+                    all_workspaces.extend(ws_list)
+
+                yield json.dumps({
+                    "type":          "progress",
+                    "current":       processed,
+                    "total":         total,
+                    "search_string": ss,
+                    "found":         len(ws_list),
+                    "error":         err,
+                    "message":       (f"[{processed}/{total}] '{ss}' \u2192 {len(ws_list)} workspace(s)"
+                                      if not err else f"[{processed}/{total}] '{ss}' \u2192 ERROR: {err}"),
+                }) + "\n"
+
+            if batch_start + MINI_BATCH < total:
+                await asyncio.sleep(0.5)
+
+        yield json.dumps({
+            "type":            "complete",
+            "total_searched":  processed,
+            "found_count":     found_count,
+            "not_found_count": not_found_count,
+            "error_count":     error_count,
+            "elapsed_seconds": round(time.time() - start_time, 2),
+            "workspaces":      all_workspaces,
+        }) + "\n"
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+@router.post("/query-workspaces-csv-direct")
+async def ccs_query_workspaces_csv_direct(
+    request: Request,
+    bearer_token: str = Form(...),
+    cookie: str = Form(""),
+    base_url: str = Form(API_BASE),
+    limit: int = Form(10),
+    file: UploadFile = File(...)
+):
+    """Direct CSV download fallback for Query Workspaces."""
+    if not is_aquila_url(base_url):
+        raise HTTPException(status_code=400, detail="Query Workspaces requires an Aquila session base URL.")
+
+    content = await file.read()
+    raw_strings = parse_csv_column(
+        content,
+        ["Search String", "search_string", "Platform Customer ID", "platform_customer_id",
+         "Customer ID", "customer_id", "ID", "id", "Email", "email",
+         "Company", "company", "Name", "name", "Workspace", "workspace"]
+    )
+    
+    seen: set = set()
+    unique_strings: List[str] = []
+    for s in raw_strings:
+        if s and s not in seen:
+            seen.add(s)
+            unique_strings.append(s)
+
+    if not unique_strings:
+        raise HTTPException(status_code=400, detail="No search strings found in CSV.")
+
+    headers_  = make_headers(bearer_token, cookie, base_url=base_url)
+    endpoint  = f"{base_url}/support-assistant/v1alpha1/customers"
+    capped_limit = max(1, min(limit, 200))
+
+    def _run_batch_sync(b):
+        results = []
+        with ThreadPoolExecutor(max_workers=min(len(b), 20)) as ex:
+            futures = {ex.submit(_fetch_workspaces_for_string, s, headers_, endpoint, capped_limit): s for s in b}
+            for fut in as_completed(futures):
+                try:
+                    res = fut.result()
+                    if res["workspaces"]:
+                        results.extend(res["workspaces"])
+                except Exception:
+                    pass
+        return results
+
+    loop = asyncio.get_running_loop()
+    all_workspaces = await loop.run_in_executor(None, _run_batch_sync, unique_strings)
+
+    if not all_workspaces:
+        return JSONResponse(status_code=404, content={"message": "No workspaces found or session expired. Please verify your bearer token."})
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=list(all_workspaces[0].keys()))
+    writer.writeheader()
+    writer.writerows(all_workspaces)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=workspaces_result.csv"}
+    )
+
+
+
+# ============================================================
 # TRANSFER DEVICES (Real CCS-Manager endpoint from DevTools)
 def _transfer_batch_with_retry(
     headers: dict, 
@@ -335,6 +596,7 @@ async def ccs_transfer_devices(
     dest_workspace_id: str = Form(...),   # workspace NAME or ID for destination
     base_url: str = Form(API_BASE),
     folder: str = Form("default"),        # folder name — 'default' matches CCS UI dropdown
+    dry_run: bool = Form(False),
     file: UploadFile = File(...)
 ):
     """
@@ -354,6 +616,46 @@ async def ccs_transfer_devices(
 
     results = {"total": len(serials), "successful": 0, "failed": 0, "details": [], "elapsed_seconds": 0}
     use_aquila = is_aquila_url(base_url)
+
+    # ── Dry-Run Mode: lookup only, no actual transfer ───────────────────────────
+    if dry_run:
+        print(f"[CCS] DRY-RUN transfer-devices: {len(serials)} serials → {dest_workspace_id}")
+        h = make_headers(bearer_token, cookie, "application/json", base_url)
+        for serial in serials:
+            try:
+                if use_aquila:
+                    lurl = f"{base_url}/support-assistant/v1alpha1/activate-devices"
+                    r = requests.get(lurl, headers=h, params={"serial_number": serial, "limit": 5}, timeout=30)
+                    if r.status_code == 200:
+                        items = r.json().get("devices", r.json().get("items", []))
+                        m = next((d for d in items if d.get("serial_number", "").upper() == serial.upper()), items[0] if items else None)
+                        if m:
+                            current_ws = m.get("platform_customer_id", m.get("pcid", "Unknown"))
+                            results["successful"] += 1
+                            results["details"].append({
+                                "serial": serial, "success": True, "status": "Would Transfer",
+                                "detail": f"Current WS: {current_ws} → Dest: {dest_workspace_id} | {m.get('device_model','?')} | {m.get('status','?')}"
+                            })
+                        else:
+                            results["failed"] += 1
+                            results["details"].append({"serial": serial, "success": False, "error": "Not found in global search"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": f"Lookup HTTP {r.status_code}"})
+                else:
+                    did = get_device_id_by_serial(bearer_token, cookie, serial, base_url)
+                    if did:
+                        results["successful"] += 1
+                        results["details"].append({"serial": serial, "success": True, "status": "Would Transfer", "detail": f"Device {did} → Dest: {dest_workspace_id}"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": "Device not found"})
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({"serial": serial, "success": False, "error": str(e)})
+            time.sleep(0.15)
+        results["elapsed_seconds"] = round(time.time() - start_time, 2)
+        return JSONResponse(content={**results, "dry_run": True})
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -442,6 +744,275 @@ async def ccs_transfer_devices(
 
 
 # ============================================================
+# BULK MOVE DEVICES (multi-workspace CSV: workspace_id + serial_number per row)
+# ============================================================
+
+
+def _parse_bulk_move_csv(file_content: bytes) -> List[dict]:
+    """
+    Parse a 2-column file (CSV or TSV) where each row has a destination workspace ID
+    and a device serial number.
+
+    Robustness built-in:
+    - Auto-detects delimiter: prefers TAB if found on first line, otherwise sniffs
+    - Normalises Unicode whitespace (EM SPACE U+2003, NBSP, etc.) in column headers
+    - Skips blank rows silently
+    - Positional fallback if column names are unrecognised (col0=workspace, col1=serial)
+
+    Accepted column names (case-insensitive after normalisation):
+      workspace : Workspace ID | workspace_id | Customer ID | PCID | Destination | Dest
+      serial    : Serial Number | SerialNumber | Serial | SN
+    Returns list of dicts: [{"workspace_id": "...", "serial": "..."}, ...]
+    """
+    import re
+
+    WORKSPACE_COLS = {"workspace id", "workspace_id", "customer id", "customer_id",
+                      "platform customer id", "platform_customer_id", "pcid",
+                      "destination", "dest"}
+    SERIAL_COLS    = {"serial number", "serialnumber", "serial", "sn"}
+
+    def _norm(h: str) -> str:
+        """Collapse any Unicode whitespace (incl. U+2003 EM SPACE) to single ASCII space."""
+        return re.sub(r'[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+', ' ', h).strip().lower()
+
+    try:
+        text = file_content.decode("utf-8-sig")
+
+        # ── Step 1: detect delimiter ──────────────────────────────────────────
+        # The header may use exotic spacing (e.g. EM SPACE U+2003) as a separator
+        # while every data row uses a tab.  Scan the first *data* line for a tab,
+        # not just the header line.
+        all_lines = text.splitlines()
+        header_line = next((l for l in all_lines if l.strip()), "")
+        first_data_line = next((l for l in all_lines[1:] if l.strip()), "")
+        check_line = first_data_line if first_data_line else header_line
+
+        delimiter = ","
+        if "\t" in check_line:
+            delimiter = "\t"
+        else:
+            try:
+                delimiter = csv.Sniffer().sniff(check_line, delimiters=",;\t|").delimiter
+            except csv.Error:
+                pass
+
+        # ── Step 2: parse with DictReader ─────────────────────────────────────
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter, skipinitialspace=True)
+
+        raw_headers = list(reader.fieldnames or [])
+        norm_to_raw = {_norm(h): h for h in raw_headers}
+
+        ws_col = next((norm_to_raw[n] for n in norm_to_raw if n in WORKSPACE_COLS), None)
+        sn_col = next((norm_to_raw[n] for n in norm_to_raw if n in SERIAL_COLS),    None)
+
+        # ── Step 3: header-split fallback ─────────────────────────────────────
+        # If the header itself used a different separator (e.g. EM SPACE) the
+        # DictReader may lump both column names into one string.  Re-split it
+        # using any Unicode whitespace sequence and try again.
+        if (ws_col is None or sn_col is None) and len(raw_headers) == 1:
+            # Re-split the single raw header on Unicode whitespace
+            header_parts = re.split(r'[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+', raw_headers[0].strip())
+            header_parts = [p for p in header_parts if p]
+            if len(header_parts) >= 2:
+                # Rebuild norm_to_raw using positional indices from the re-split
+                norm_to_raw2 = {_norm(p): p for p in header_parts}
+                ws_col = next((norm_to_raw2[n] for n in norm_to_raw2 if n in WORKSPACE_COLS), None)
+                sn_col = next((norm_to_raw2[n] for n in norm_to_raw2 if n in SERIAL_COLS), None)
+                # Map back to positional access on the raw_headers key
+                ws_col = raw_headers[0] if ws_col is not None else None
+                sn_col = raw_headers[0] if sn_col is not None else None
+                # When both map to index-0 it means the header re-split worked but
+                # DictReader sees only one column — fall through to positional mode below.
+                ws_col = sn_col = None  # force positional
+
+        # Positional fallback (col 0 = workspace, col 1 = serial)
+        pos_ws = raw_headers[0] if len(raw_headers) > 0 else None
+        pos_sn = raw_headers[1] if len(raw_headers) > 1 else None
+
+        # When the file has only ONE recognised column we must use positional
+        # mode: re-read each data line, split on the data delimiter, treat
+        # index-0 as workspace and index-1 as serial.
+        use_manual = (ws_col is None or sn_col is None) and delimiter != ","
+
+        rows = []
+        if use_manual:
+            # Manual split: skip header, split every non-blank line on delimiter
+            for line in all_lines[1:]:
+                parts = line.split(delimiter)
+                if len(parts) < 2:
+                    continue
+                ws = parts[0].strip()
+                sn = parts[1].strip()
+                if ws and sn:
+                    rows.append({"workspace_id": ws, "serial": sn})
+        else:
+            for row in reader:
+                # Skip blank separator rows
+                if all(not v.strip() for v in row.values() if v):
+                    continue
+                if ws_col and sn_col:
+                    ws = (row.get(ws_col) or "").strip()
+                    sn = (row.get(sn_col) or "").strip()
+                elif pos_ws and pos_sn:
+                    ws = (row.get(pos_ws) or "").strip()
+                    sn = (row.get(pos_sn) or "").strip()
+                else:
+                    ws = sn = ""
+                if ws and sn:
+                    rows.append({"workspace_id": ws, "serial": sn})
+        return rows
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"CSV parse error: {str(e)}")
+
+
+@router.post("/bulk-move-devices")
+async def ccs_bulk_move_devices(
+    bearer_token: str = Form(...),
+    cookie:       str = Form(""),
+    base_url:     str = Form(API_BASE),
+    folder:       str = Form("default"),
+    dry_run:      bool = Form(False),
+    file: UploadFile = File(...),
+):
+    """
+    Bulk-move devices to their individual destination workspaces.
+    CSV must have TWO columns per row:
+      - Destination Workspace ID  (any of: Workspace ID, Customer ID, PCID, …)
+      - Device Serial Number      (any of: Serial Number, SN, serial, …)
+    Each device is moved to the workspace specified on its row.
+    Devices targeting the same workspace are batched together for efficiency.
+    """
+    start_time = time.time()
+    content = await file.read()
+    rows = _parse_bulk_move_csv(content)
+
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No valid rows found in CSV. Expected two columns: "
+                "'Workspace ID' (destination) and 'Serial Number'."
+            )
+        )
+
+    # Group serials by destination workspace
+    from collections import defaultdict
+    workspace_groups: dict = defaultdict(list)
+    for r in rows:
+        workspace_groups[r["workspace_id"]].append(r["serial"])
+
+    total_devices = len(rows)
+    results = {
+        "total":            total_devices,
+        "successful":       0,
+        "failed":           0,
+        "workspaces_count": len(workspace_groups),
+        "details":          [],
+        "elapsed_seconds":  0,
+    }
+    use_aquila = is_aquila_url(base_url)
+    headers = make_headers(bearer_token, cookie, "application/json", base_url)
+
+    # ── Dry-Run ──────────────────────────────────────────────────────────────
+    if dry_run:
+        print(f"[CCS] DRY-RUN bulk-move-devices: {total_devices} rows → {len(workspace_groups)} workspaces")
+        for dest_ws, serials in workspace_groups.items():
+            for serial in serials:
+                results["successful"] += 1
+                results["details"].append({
+                    "serial":  serial,
+                    "success": True,
+                    "status":  "Would Transfer",
+                    "detail":  f"→ Workspace {dest_ws}",
+                })
+        results["elapsed_seconds"] = round(time.time() - start_time, 2)
+        return JSONResponse(content={**results, "dry_run": True})
+
+    # ── Real Transfer ────────────────────────────────────────────────────────
+    if use_aquila:
+        endpoint = f"{base_url}/support-assistant/v1alpha1/devices-to-customer"
+        batch_size = 250
+
+        for dest_ws, serials in workspace_groups.items():
+            print(f"[CCS] Bulk-move: {len(serials)} device(s) → workspace {dest_ws}")
+
+            # Resolve folder ID for this destination workspace
+            folder_id = ""
+            folder_name = folder
+            try:
+                folder_url = f"{base_url}/support-assistant/v1alpha1/user-folders"
+                f_params = {"limit": 50, "page": 0, "platform_customer_id": dest_ws}
+                f_resp = requests.get(folder_url, headers=headers, params=f_params, timeout=15)
+                if f_resp.status_code == 200:
+                    f_data = f_resp.json()
+                    items = (
+                        f_data if isinstance(f_data, list)
+                        else f_data.get("items", f_data.get("folders", f_data.get("data", [])))
+                    )
+                    for fi in items:
+                        name = fi.get("name", fi.get("folder_name", fi.get("folderName", "")))
+                        if name.lower() == folder.lower():
+                            folder_id = fi.get("id", fi.get("folder_id", fi.get("folderId", "")))
+                            break
+                    if not folder_id and items:
+                        folder_id  = items[0].get("id", items[0].get("folder_id", items[0].get("folderId", "")))
+                        folder_name = items[0].get("name", items[0].get("folder_name", folder))
+            except Exception as e:
+                print(f"[CCS] Could not fetch folder ID for {dest_ws}: {e}")
+
+            fid: int = 0
+            if folder_id:
+                try:
+                    fid = int(folder_id)
+                except ValueError:
+                    pass
+
+            base_payload = {"folder_name": folder_name, "platform_customer_id": dest_ws}
+            if fid:
+                base_payload["folder_id"] = fid
+
+            for i in range(0, len(serials), batch_size):
+                batch = serials[i : i + batch_size]
+                _transfer_batch_with_retry(headers, endpoint, base_payload, batch, results)
+                time.sleep(1.0)
+
+    else:
+        # Public GreenLake API — patch each device individually
+        for dest_ws, serials in workspace_groups.items():
+            for serial in serials:
+                device_id = get_device_id_by_serial(bearer_token, cookie, serial, base_url)
+                if not device_id:
+                    results["failed"] += 1
+                    results["details"].append({"serial": serial, "success": False, "error": "Device not found"})
+                    continue
+                try:
+                    patch_url = f"{base_url}/devices/v1beta1/devices"
+                    h2 = make_headers(bearer_token, cookie, "application/merge-patch+json", base_url)
+                    payload  = {"workspace": {"id": dest_ws}}
+                    resp = requests.patch(patch_url, headers=h2, params={"id": device_id}, json=payload, timeout=30)
+                    print(f"[CCS] Bulk-move GLP {serial} → {dest_ws}: HTTP {resp.status_code}")
+                    if resp.status_code in [200, 202]:
+                        results["successful"] += 1
+                        results["details"].append({
+                            "serial":  serial, "success": True, "status": "Transferred",
+                            "detail":  f"→ Workspace {dest_ws}",
+                        })
+                    else:
+                        error_msg = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": error_msg})
+                except Exception as e:
+                    results["failed"] += 1
+                    results["details"].append({"serial": serial, "success": False, "error": str(e)})
+                time.sleep(0.3)
+
+    results["elapsed_seconds"] = round(time.time() - start_time, 2)
+    return JSONResponse(content=results)
+
+
+# ============================================================
 # TRANSFER SUBSCRIPTIONS (CCS-Manager session)
 # ============================================================
 
@@ -452,6 +1023,7 @@ async def ccs_transfer_subscriptions(
     source_workspace_id: str = Form(...),
     dest_workspace_id: str = Form(...),
     base_url: str = Form(API_BASE),
+    dry_run: bool = Form(False),
     file: UploadFile = File(...)
 ):
     """
@@ -468,6 +1040,18 @@ async def ccs_transfer_subscriptions(
         raise HTTPException(status_code=400, detail="No subscription keys found in CSV")
 
     results = {"total": len(keys), "successful": 0, "failed": 0, "details": [], "elapsed_seconds": 0}
+
+    # ── Dry-Run Mode: report what would be transferred, no write calls ──────────
+    if dry_run:
+        print(f"[CCS] DRY-RUN transfer-subscriptions: {len(keys)} keys {source_workspace_id} → {dest_workspace_id}")
+        for key in keys:
+            results["successful"] += 1
+            results["details"].append({
+                "key": key, "success": True, "status": "Would Transfer",
+                "detail": f"Subscription key from {source_workspace_id} → {dest_workspace_id}"
+            })
+        results["elapsed_seconds"] = round(time.time() - start_time, 2)
+        return JSONResponse(content={**results, "dry_run": True})
 
     if is_aquila_url(base_url):
         transfer_url = f"{base_url}/support-assistant/v1alpha1/subscription-transfer"
@@ -924,6 +1508,7 @@ async def ccs_unclaim_devices(
     cookie: str = Form(""),
     workspace_id: str = Form(...),
     base_url: str = Form(API_BASE),
+    dry_run: bool = Form(False),
     file: UploadFile = File(...)
 ):
     """
@@ -945,6 +1530,46 @@ async def ccs_unclaim_devices(
 
     dest_workspace_id = "Aruba-Factory-CCS-Platform"
     folder = "default"
+
+    # ── Dry-Run Mode: lookup only, no actual unclaim ────────────────────────────
+    if dry_run:
+        print(f"[CCS] DRY-RUN unclaim-devices: {len(serials)} serials from {workspace_id}")
+        h = make_headers(bearer_token, cookie, "application/json", base_url)
+        for serial in serials:
+            try:
+                if use_aquila:
+                    lurl = f"{base_url}/support-assistant/v1alpha1/activate-devices"
+                    r = requests.get(lurl, headers=h, params={"serial_number": serial, "limit": 5}, timeout=30)
+                    if r.status_code == 200:
+                        items = r.json().get("devices", r.json().get("items", []))
+                        m = next((d for d in items if d.get("serial_number", "").upper() == serial.upper()), items[0] if items else None)
+                        if m:
+                            current_ws = m.get("platform_customer_id", m.get("pcid", "Unknown"))
+                            results["successful"] += 1
+                            results["details"].append({
+                                "serial": serial, "success": True, "status": "Would Unclaim",
+                                "detail": f"Would remove from WS: {current_ws} → Factory | {m.get('device_model','?')} | {m.get('status','?')}"
+                            })
+                        else:
+                            results["failed"] += 1
+                            results["details"].append({"serial": serial, "success": False, "error": "Not found in global search"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": f"Lookup HTTP {r.status_code}"})
+                else:
+                    did = get_device_id_by_serial(bearer_token, cookie, serial, base_url)
+                    if did:
+                        results["successful"] += 1
+                        results["details"].append({"serial": serial, "success": True, "status": "Would Unclaim", "detail": f"Device {did} → return to Factory"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": "Device not found"})
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({"serial": serial, "success": False, "error": str(e)})
+            time.sleep(0.15)
+        results["elapsed_seconds"] = round(time.time() - start_time, 2)
+        return JSONResponse(content={**results, "dry_run": True})
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -1042,6 +1667,7 @@ async def ccs_claim_devices(
     workspace_id: str = Form(...),
     folder: str = Form("default"),
     base_url: str = Form(API_BASE),
+    dry_run: bool = Form(False),
     file: UploadFile = File(...)
 ):
     """
@@ -1062,6 +1688,46 @@ async def ccs_claim_devices(
     use_aquila = is_aquila_url(base_url)
 
     dest_workspace_id = workspace_id
+
+    # ── Dry-Run Mode: lookup only, no actual claim ──────────────────────────────
+    if dry_run:
+        print(f"[CCS] DRY-RUN claim-devices: {len(serials)} serials → {workspace_id}")
+        h = make_headers(bearer_token, cookie, "application/json", base_url)
+        for serial in serials:
+            try:
+                if use_aquila:
+                    lurl = f"{base_url}/support-assistant/v1alpha1/activate-devices"
+                    r = requests.get(lurl, headers=h, params={"serial_number": serial, "limit": 5}, timeout=30)
+                    if r.status_code == 200:
+                        items = r.json().get("devices", r.json().get("items", []))
+                        m = next((d for d in items if d.get("serial_number", "").upper() == serial.upper()), items[0] if items else None)
+                        if m:
+                            current_ws = m.get("platform_customer_id", m.get("pcid", "Factory"))
+                            results["successful"] += 1
+                            results["details"].append({
+                                "serial": serial, "success": True, "status": "Would Claim",
+                                "detail": f"Currently at: {current_ws} → Claim into: {workspace_id} | {m.get('device_model','?')}"
+                            })
+                        else:
+                            results["failed"] += 1
+                            results["details"].append({"serial": serial, "success": False, "error": "Not found in global search"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": f"Lookup HTTP {r.status_code}"})
+                else:
+                    did = get_device_id_by_serial(bearer_token, cookie, serial, base_url)
+                    if did:
+                        results["successful"] += 1
+                        results["details"].append({"serial": serial, "success": True, "status": "Would Claim", "detail": f"Device {did} → claim into {workspace_id}"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": "Device not found"})
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({"serial": serial, "success": False, "error": str(e)})
+            time.sleep(0.15)
+        results["elapsed_seconds"] = round(time.time() - start_time, 2)
+        return JSONResponse(content={**results, "dry_run": True})
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -1146,6 +1812,144 @@ async def ccs_claim_devices(
 
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
     return JSONResponse(content=results)
+
+
+# ============================================================
+# SNAPSHOT DEVICES — read-only current state capture
+# ============================================================
+
+@router.post("/snapshot-devices")
+async def ccs_snapshot_devices(
+    bearer_token: str = Form(...),
+    cookie: str = Form(""),
+    base_url: str = Form(API_BASE),
+    file: UploadFile = File(...)
+):
+    """
+    Read-only: returns current device state (workspace, model, status).
+    Uses activate-devices lookup — no changes made.
+    """
+    content = await file.read()
+    serials = parse_csv_column(
+        content,
+        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"]
+    )
+    if not serials:
+        raise HTTPException(status_code=400, detail="No serial numbers found in CSV")
+
+    use_aquila = is_aquila_url(base_url)
+    if not use_aquila:
+        raise HTTPException(status_code=400, detail="Snapshot requires an Aquila session base URL")
+
+    headers = make_headers(bearer_token, cookie, base_url=base_url)
+    snapshot = []
+
+    for serial in serials:
+        try:
+            lookup_url = f"{base_url}/support-assistant/v1alpha1/activate-devices"
+            resp = requests.get(lookup_url, headers=headers, params={"serial_number": serial, "limit": 5}, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get("devices", data.get("items", []))
+                matched = next(
+                    (d for d in items if d.get("serial_number", "").upper() == serial.upper()),
+                    items[0] if items else None
+                )
+                if matched:
+                    snapshot.append({
+                        "serial_number": serial,
+                        "platform_customer_id": matched.get("platform_customer_id", matched.get("pcid", "")),
+                        "device_model": matched.get("device_model", matched.get("model", "")),
+                        "part_number": matched.get("part_number", ""),
+                        "mac_address": matched.get("mac_address", ""),
+                        "status": matched.get("status", ""),
+                        "found": True
+                    })
+                else:
+                    snapshot.append({"serial_number": serial, "found": False, "error": "Not found in global search"})
+            else:
+                snapshot.append({"serial_number": serial, "found": False, "error": f"HTTP {resp.status_code}"})
+        except Exception as e:
+            snapshot.append({"serial_number": serial, "found": False, "error": str(e)})
+        time.sleep(0.15)
+
+    return JSONResponse(content={
+        "snapshot": snapshot,
+        "total": len(serials),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    })
+
+
+# ============================================================
+# SNAPSHOT USERS — read-only workspace membership capture
+# ============================================================
+
+@router.post("/snapshot-users")
+async def ccs_snapshot_users(
+    bearer_token: str = Form(...),
+    cookie: str = Form(""),
+    base_url: str = Form(API_BASE),
+    workspace_id: str = Form(""),
+    file: UploadFile = File(...)
+):
+    """
+    Read-only: returns which workspaces each user currently belongs to.
+    No deletions made.
+    """
+    content = await file.read()
+    usernames = parse_csv_column(
+        content,
+        ["Email", "email", "Username", "username", "User", "Search String", "search_string"]
+    )
+    if not usernames:
+        raise HTTPException(status_code=400, detail="No emails/usernames found in CSV")
+
+    use_aquila = is_aquila_url(base_url)
+    if not use_aquila:
+        raise HTTPException(status_code=400, detail="Snapshot requires an Aquila session base URL")
+
+    headers = make_headers(bearer_token, cookie, base_url=base_url)
+    snapshot = []
+
+    for username in usernames:
+        if workspace_id:
+            snapshot.append({
+                "username": username, "workspace_id": workspace_id,
+                "company_name": "", "account_type": "", "status": "", "found": True
+            })
+        else:
+            try:
+                query_url = f"{base_url}/support-assistant/v1alpha1/customers"
+                resp = requests.get(
+                    query_url, headers=headers,
+                    params={"limit": 1000, "offset": 0, "username": username},
+                    timeout=30
+                )
+                if resp.status_code == 200:
+                    customers = resp.json().get("customers", [])
+                    if customers:
+                        for cust in customers:
+                            snapshot.append({
+                                "username": username,
+                                "workspace_id": cust.get("customer_id", ""),
+                                "company_name": cust.get("contact", {}).get("company_name", ""),
+                                "account_type": cust.get("account_type", ""),
+                                "status": cust.get("account", {}).get("status", ""),
+                                "found": True
+                            })
+                    else:
+                        snapshot.append({"username": username, "found": False, "error": "No workspaces found"})
+                else:
+                    snapshot.append({"username": username, "found": False, "error": f"HTTP {resp.status_code}"})
+            except Exception as e:
+                snapshot.append({"username": username, "found": False, "error": str(e)})
+        time.sleep(0.2)
+
+    return JSONResponse(content={
+        "snapshot": snapshot,
+        "total": len(usernames),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    })
 
 
 # ============================================================
@@ -1267,6 +2071,7 @@ async def ccs_delete_users(
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
     workspace_id: str = Form(""),
+    dry_run: bool = Form(False),
     file: UploadFile = File(...),
     skip_file: UploadFile = File(None)
 ):
@@ -1303,7 +2108,7 @@ async def ccs_delete_users(
 
     async def event_generator():
         results = {"total": len(usernames), "successful": 0, "failed": 0, "details": [], "elapsed_seconds": 0}
-        yield json.dumps({"type": "progress", "current": 0, "total": len(usernames), "message": "Starting deletion..."}) + "\n"
+        yield json.dumps({"type": "progress", "current": 0, "total": len(usernames), "message": "Starting dry-run simulation..." if dry_run else "Starting deletion..."}) + "\n"
 
         for idx, username in enumerate(usernames):
             if await request.is_disconnected():
@@ -1334,7 +2139,7 @@ async def ccs_delete_users(
 
             for wid in target_workspaces:
                 wid_clean = wid.replace("-", "").lower()
-                
+
                 if wid_clean in skip_workspaces:
                     print(f"[CCS] Skip list triggered: Skipping deletion of {username} from workspace ({wid})")
                     results["successful"] += 1
@@ -1347,29 +2152,34 @@ async def ccs_delete_users(
                     results["details"].append({"key": username, "success": True, "status": "Skipped", "detail": f"Protected: @hpe.com employee in {wid}"})
                     continue
 
-                print(f"[CCS] Deleting user: {username} from workspace: {wid}")
                 payload = {"username": username, "customer_id": wid}
-                
+
                 try:
-                    resp = requests.delete(endpoint, headers=headers, json=payload, timeout=30)
-                    if resp.status_code in [200, 201, 204]:
+                    if dry_run:
+                        print(f"[CCS] DRY-RUN: Would delete {username} from workspace {wid}")
                         results["successful"] += 1
-                        detail_str = f"Deleted from {wid}"
-                        try: 
-                            api_msg = resp.json().get("message", "")
-                            if api_msg: detail_str = f"{api_msg} ({wid})"
-                        except Exception:
-                            pass
-                        results["details"].append({"key": username, "success": True, "status": "Success", "detail": detail_str})
+                        results["details"].append({"key": username, "success": True, "status": "Would Delete", "detail": f"Would be removed from workspace {wid}"})
                     else:
-                        error_msg = f"HTTP {resp.status_code}"
-                        try:
-                            err = resp.json()
-                            error_msg = err.get("message", err.get("detail", str(err)))
-                        except Exception:
-                            error_msg = resp.text[:200] or error_msg
-                        results["failed"] += 1
-                        results["details"].append({"key": username, "success": False, "error": f"{error_msg} ({wid})"})
+                        print(f"[CCS] Deleting user: {username} from workspace: {wid}")
+                        resp = requests.delete(endpoint, headers=headers, json=payload, timeout=30)
+                        if resp.status_code in [200, 201, 204]:
+                            results["successful"] += 1
+                            detail_str = f"Deleted from {wid}"
+                            try:
+                                api_msg = resp.json().get("message", "")
+                                if api_msg: detail_str = f"{api_msg} ({wid})"
+                            except Exception:
+                                pass
+                            results["details"].append({"key": username, "success": True, "status": "Success", "detail": detail_str})
+                        else:
+                            error_msg = f"HTTP {resp.status_code}"
+                            try:
+                                err = resp.json()
+                                error_msg = err.get("message", err.get("detail", str(err)))
+                            except Exception:
+                                error_msg = resp.text[:200] or error_msg
+                            results["failed"] += 1
+                            results["details"].append({"key": username, "success": False, "error": f"{error_msg} ({wid})"})
                 except Exception as e:
                     results["failed"] += 1
                     results["details"].append({"key": username, "success": False, "error": f"{str(e)} ({wid})"})
@@ -1378,7 +2188,7 @@ async def ccs_delete_users(
             await asyncio.sleep(0.3)
 
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
-        yield json.dumps({"type": "complete", "results": results}) + "\n"
+        yield json.dumps({"type": "complete", "results": results, "dry_run": dry_run}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 

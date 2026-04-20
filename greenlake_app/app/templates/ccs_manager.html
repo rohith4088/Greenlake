@@ -209,6 +209,268 @@
         cursor: not-allowed;
     }
 
+    /* ── CSV Preview Modal ─────────────────────────────────── */
+    #csvPreviewModal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(4px);
+        animation: fadeInOverlay 0.15s ease;
+    }
+
+    #csvPreviewModal.open {
+        display: flex;
+    }
+
+    @keyframes fadeInOverlay {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    .csv-modal-box {
+        background: #1a1a2e;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 28px 28px 24px;
+        width: min(860px, 92vw);
+        max-height: 82vh;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+        animation: slideUp 0.18s ease;
+    }
+
+    @keyframes slideUp {
+        from { transform: translateY(24px); opacity: 0; }
+        to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    .csv-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .csv-modal-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .csv-modal-subtitle {
+        margin: 0;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.45);
+    }
+
+    .csv-modal-close {
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px;
+        color: rgba(255,255,255,0.6);
+        font-size: 0.9rem;
+        cursor: pointer;
+        padding: 4px 9px;
+        line-height: 1;
+        flex-shrink: 0;
+        transition: background 0.15s;
+    }
+
+    .csv-modal-close:hover { background: rgba(255,255,255,0.14); }
+
+    .csv-preview-table-wrap {
+        overflow: auto;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        background: rgba(0,0,0,0.25);
+        flex: 1;
+    }
+
+    .csv-preview-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.85);
+    }
+
+    .csv-preview-table thead tr {
+        background: rgba(255,255,255,0.06);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .csv-preview-table th, .csv-preview-table td {
+        padding: 8px 12px;
+        text-align: left;
+        white-space: nowrap;
+        border-right: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .csv-preview-table th {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255,255,255,0.45);
+        font-weight: 600;
+    }
+
+    .csv-preview-table tbody tr:nth-child(even) {
+        background: rgba(255,255,255,0.025);
+    }
+
+    .csv-preview-table tbody tr:hover {
+        background: rgba(76,209,55,0.06);
+    }
+
+    .csv-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 4px;
+    }
+
+    .csv-row-count {
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.45);
+    }
+
+    .csv-row-count strong {
+        color: #4cd137;
+    }
+
+    .csv-modal-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .csv-modal-actions .btn-cancel {
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.16);
+        border-radius: 8px;
+        color: rgba(255,255,255,0.8);
+        font-weight: 600;
+        font-size: 0.875rem;
+        padding: 9px 22px;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+    .csv-modal-actions .btn-cancel:hover { background: rgba(255,255,255,0.13); }
+
+    .csv-modal-actions .btn-confirm {
+        background: linear-gradient(135deg, #4cd137, #00b894);
+        border: none;
+        border-radius: 8px;
+        color: #000;
+        font-weight: 700;
+        font-size: 0.875rem;
+        padding: 9px 22px;
+        cursor: pointer;
+        transition: opacity 0.15s;
+    }
+
+    .csv-modal-actions .btn-confirm:hover { opacity: 0.88; }
+
+    /* ── Dry-Run Toggle ────────────────────────────────────────── */
+    .dry-run-row {
+        margin-top: 10px;
+        padding: 8px 12px;
+        background: rgba(0, 168, 255, 0.05);
+        border: 1px solid rgba(0, 168, 255, 0.18);
+        border-radius: 8px;
+    }
+
+    .dry-run-label {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        cursor: pointer;
+        user-select: none;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.65);
+    }
+
+    .dry-run-checkbox { display: none; }
+
+    .toggle-track {
+        position: relative;
+        width: 34px;
+        height: 18px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 18px;
+        transition: background 0.2s, border-color 0.2s;
+        flex-shrink: 0;
+    }
+
+    .toggle-track::after {
+        content: '';
+        position: absolute;
+        top: 2px; left: 2px;
+        width: 12px; height: 12px;
+        background: rgba(255,255,255,0.4);
+        border-radius: 50%;
+        transition: transform 0.2s, background 0.2s;
+    }
+
+    .dry-run-checkbox:checked + .toggle-track {
+        background: rgba(0, 168, 255, 0.35);
+        border-color: rgba(0, 168, 255, 0.6);
+    }
+
+    .dry-run-checkbox:checked + .toggle-track::after {
+        transform: translateX(16px);
+        background: #00a8ff;
+    }
+
+    .dry-run-hint {
+        margin-left: auto;
+        font-size: 0.72rem;
+        color: rgba(0, 168, 255, 0.55);
+        font-style: italic;
+    }
+
+    /* ── Snapshot Button ─────────────────────────────────────── */
+    .btn-snapshot {
+        width: 100%;
+        margin-top: 8px;
+        padding: 8px 14px;
+        background: rgba(253, 121, 168, 0.07);
+        border: 1px solid rgba(253, 121, 168, 0.28);
+        border-radius: 8px;
+        color: rgba(253, 121, 168, 0.85);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-align: center;
+    }
+
+    .btn-snapshot:hover { background: rgba(253, 121, 168, 0.16); }
+    .btn-snapshot:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Dry-Run Results Banner ───────────────────────────────── */
+    .dry-run-banner {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        margin-bottom: 18px;
+        background: rgba(0, 168, 255, 0.07);
+        border: 1px solid rgba(0, 168, 255, 0.28);
+        border-radius: 10px;
+        font-size: 0.85rem;
+        color: #00a8ff;
+        font-weight: 600;
+    }
+
     .btn-secondary {
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.15);
@@ -518,11 +780,20 @@
                     onchange="handleFileSelect(this, 'devFileLabel')">
             </div>
 
-            <button class="btn-primary" id="devTransferBtn" onclick="transferDevices()">
+            <button class="btn-primary" id="devTransferBtn" onclick="previewThenRun('devFile', 'Transfer Devices', transferDevices)">
                 Transfer Devices
             </button>
             <div class="loading-overlay" id="devLoader" style="justify-content: center;">
                 <div class="spinner"></div> Transferring devices — please wait...
+            </div>
+            <button class="btn-snapshot" id="devSnapshotBtn" onclick="snapshotDevices('devFile', 'devSnapshotBtn')">📸 Snapshot Current State</button>
+            <div class="dry-run-row">
+                <label class="dry-run-label">
+                    <input type="checkbox" class="dry-run-checkbox" id="devDryRun">
+                    <span class="toggle-track"></span>
+                    <span>🔬 Dry-Run Mode</span>
+                    <span class="dry-run-hint">Simulate only</span>
+                </label>
             </div>
         </div>
 
@@ -558,11 +829,19 @@
                     onchange="handleFileSelect(this, 'subFileLabel')">
             </div>
 
-            <button class="btn-primary" id="subTransferBtn" onclick="transferSubscriptions()">
+            <button class="btn-primary" id="subTransferBtn" onclick="previewThenRun('subFile', 'Transfer Subscriptions', transferSubscriptions)">
                 Transfer Subscriptions
             </button>
             <div class="loading-overlay" id="subLoader" style="justify-content: center;">
                 <div class="spinner"></div> Transferring subscriptions — please wait...
+            </div>
+            <div class="dry-run-row">
+                <label class="dry-run-label">
+                    <input type="checkbox" class="dry-run-checkbox" id="subDryRun">
+                    <span class="toggle-track"></span>
+                    <span>🔬 Dry-Run Mode</span>
+                    <span class="dry-run-hint">Simulate only</span>
+                </label>
             </div>
         </div>
 
@@ -590,7 +869,7 @@
                     onchange="handleFileSelect(this, 'usrFileLabel')">
             </div>
 
-            <button class="btn-primary" id="usrQueryBtn" onclick="queryUsers()">
+            <button class="btn-primary" id="usrQueryBtn" onclick="previewThenRun('usrFile', 'Query Users', queryUsers)">
                 Query Users
             </button>
             <div class="loading-overlay" id="usrLoader" style="justify-content: center;">
@@ -621,7 +900,7 @@
                     onchange="handleFileSelect(this, 'devQueryFileLabel')">
             </div>
 
-            <button class="btn-primary" id="devQueryBtn" onclick="queryDevices()">
+            <button class="btn-primary" id="devQueryBtn" onclick="previewThenRun('devQueryFile', 'Query Devices', queryDevices)">
                 Query Devices
             </button>
             <div class="loading-overlay" id="devQueryLoader" style="justify-content: center; flex-direction: column; gap: 10px;">
@@ -664,11 +943,20 @@
                     onchange="handleFileSelect(this, 'unclaimFileLabel')">
             </div>
 
-            <button class="btn-primary" id="unclaimBtn" onclick="unclaimDevices()" style="background: linear-gradient(135deg, #e84118, #c23616);">
+            <button class="btn-primary" id="unclaimBtn" onclick="previewThenRun('unclaimFile', 'Unclaim Devices', unclaimDevices)" style="background: linear-gradient(135deg, #e84118, #c23616);">
                 Unclaim Devices
             </button>
             <div class="loading-overlay" id="unclaimLoader" style="justify-content: center;">
                 <div class="spinner" style="border-top-color: #e84118;"></div> Unclaiming devices — please wait...
+            </div>
+            <button class="btn-snapshot" id="unclaimSnapshotBtn" onclick="snapshotDevices('unclaimFile', 'unclaimSnapshotBtn')">&#x1F4F8; Snapshot Current State</button>
+            <div class="dry-run-row">
+                <label class="dry-run-label">
+                    <input type="checkbox" class="dry-run-checkbox" id="unclaimDryRun">
+                    <span class="toggle-track"></span>
+                    <span>&#x1F52C; Dry-Run Mode</span>
+                    <span class="dry-run-hint">Simulate only</span>
+                </label>
             </div>
         </div>
 
@@ -705,11 +993,19 @@
                     onchange="handleFileSelect(this, 'claimFileLabel')">
             </div>
 
-            <button class="btn-primary" id="claimBtn" onclick="claimDevices()" style="background: linear-gradient(135deg, #00d2d3, #0abde3);">
+            <button class="btn-primary" id="claimBtn" onclick="previewThenRun('claimFile', 'Claim Devices', claimDevices)" style="background: linear-gradient(135deg, #00d2d3, #0abde3);">
                 Claim Devices
             </button>
             <div class="loading-overlay" id="claimLoader" style="justify-content: center;">
                 <div class="spinner" style="border-top-color: #00d2d3;"></div> Claiming devices — please wait...
+            </div>
+            <div class="dry-run-row">
+                <label class="dry-run-label">
+                    <input type="checkbox" class="dry-run-checkbox" id="claimDryRun">
+                    <span class="toggle-track"></span>
+                    <span>&#x1F52C; Dry-Run Mode</span>
+                    <span class="dry-run-hint">Simulate only</span>
+                </label>
             </div>
         </div>
 
@@ -737,7 +1033,7 @@
                     onchange="handleFileSelect(this, 'ordFileLabel')">
             </div>
 
-            <button class="btn-primary" id="ordQueryBtn" onclick="queryOrders()" style="background: linear-gradient(135deg, #ff6b81, #ff4757);">
+            <button class="btn-primary" id="ordQueryBtn" onclick="previewThenRun('ordFile', 'Query Orders', queryOrders)" style="background: linear-gradient(135deg, #ff6b81, #ff4757);">
                 Query Orders
             </button>
             <div class="loading-overlay" id="ordLoader" style="justify-content: center;">
@@ -783,7 +1079,7 @@
                     onchange="handleFileSelect(this, 'delUserSkipFileLabel')">
             </div>
 
-            <button class="btn-primary" id="delUserBtn" onclick="deleteUsers()" style="background: linear-gradient(135deg, #e84118, #c23616);">
+            <button class="btn-primary" id="delUserBtn" onclick="previewThenRun('delUserFile', 'Delete Users', deleteUsers)" style="background: linear-gradient(135deg, #e84118, #c23616);">
                 Delete Users
             </button>
             <div class="loading-overlay" id="delUserLoader" style="justify-content: center; flex-direction: column; gap: 10px;">
@@ -795,6 +1091,15 @@
                     <div id="delUserProgressBar" style="width: 0%; height: 100%; background: #e84118; transition: width 0.2s;"></div>
                 </div>
                 <button id="delUserAbortBtn" class="btn-secondary" style="margin-top: 4px; padding: 4px 12px; font-size: 0.8rem; border-color: #e84118; color: #e84118;" onclick="abortDeleteUsers()">Abort</button>
+            </div>
+            <button class="btn-snapshot" id="delUserSnapshotBtn" onclick="snapshotUsers('delUserFile', 'delUserWsId', 'delUserSnapshotBtn')">&#x1F4F8; Snapshot User Workspaces</button>
+            <div class="dry-run-row">
+                <label class="dry-run-label">
+                    <input type="checkbox" class="dry-run-checkbox" id="delUserDryRun">
+                    <span class="toggle-track"></span>
+                    <span>&#x1F52C; Dry-Run Mode</span>
+                    <span class="dry-run-hint">Simulate only</span>
+                </label>
             </div>
         </div>
 
@@ -828,17 +1133,194 @@
                     onchange="handleFileSelect(this, 'auditRefFileLabel')">
             </div>
 
-            <button class="btn-primary" id="auditBtn" onclick="auditCustomerApps()" style="background: linear-gradient(135deg, #a29bfe, #6c5ce7);">
+            <button class="btn-primary" id="auditBtn" onclick="previewThenRun('auditSearchFile', 'Run Audit (Search File)', auditCustomerApps)" style="background: linear-gradient(135deg, #a29bfe, #6c5ce7);">
                 Run Audit
             </button>
             <div class="loading-overlay" id="auditLoader" style="justify-content: center;">
                 <div class="spinner" style="border-top-color: #a29bfe;"></div> Auditing — please wait...
             </div>
         </div>
+
+        <!-- Query Workspaces -->
+        <div class="op-card" id="queryWsCard" style="grid-column: 1 / -1; background: linear-gradient(135deg, rgba(253,203,110,0.05), rgba(246,185,59,0.04)); border-color: rgba(246,185,59,0.22);">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#f6b93b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    <path d="M11 8v6M8 11h6"></path>
+                </svg>
+                Query Workspaces (Bulk)
+            </h3>
+            <p>Upload a CSV with one search string per row — Platform Customer ID, company name, or email. Queries all in parallel and streams results live. Duplicates are automatically removed. (Requires Aquila session)</p>
+
+            <div style="display: grid; grid-template-columns: 1fr 160px; gap: 12px; margin-bottom: 14px; align-items: end;">
+                <div class="file-drop" id="wsFileDrop" onclick="document.getElementById('wsFile').click()" style="margin: 0; border-color: rgba(246,185,59,0.35);">
+                    <i data-feather="search"></i>
+                    <p id="wsFileLabel">Click or drag CSV with search strings<br><span style="font-size:0.7rem;opacity:0.5;">Columns: Search String | Platform Customer ID | Email | Company | ID</span></p>
+                    <input type="file" id="wsFile" accept=".csv" style="display:none"
+                        onchange="handleFileSelect(this, 'wsFileLabel')">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Results per search <span style="opacity:0.5;font-weight:400">(max 200)</span></label>
+                    <input type="number" id="wsLimit" value="10" min="1" max="200" style="text-align: center;">
+                </div>
+            </div>
+
+            <div style="display:flex; gap: 12px; align-items:center;">
+                <button class="btn-primary" id="wsQueryBtn" onclick="queryWorkspaces()" style="background: linear-gradient(135deg, #f6b93b, #e58e26);">
+                    🔍 Search Workspaces (Bulk)
+                </button>
+
+                <form action="/api/ccs/query-workspaces-csv-direct" method="POST" enctype="multipart/form-data" target="_blank" style="margin:0;" onsubmit="
+                    const bearerInput = document.getElementById('bearerToken');
+                    if(bearerInput) document.getElementById('wsCsvBearer').value = bearerInput.value.trim();
+                    const cookieInput = document.getElementById('cookieStr');
+                    if(cookieInput) document.getElementById('wsCsvCookie').value = cookieInput.value.trim();
+                    const baseInput = document.getElementById('baseUrl');
+                    if(baseInput) document.getElementById('wsCsvBase').value = baseInput.value.trim();
+                    const limitInput = document.getElementById('wsLimit');
+                    if(limitInput) document.getElementById('wsCsvLimit').value = limitInput.value || '10';
+                    
+                    const fileInput = document.getElementById('wsFile');
+                    if(!fileInput || !fileInput.files.length) { 
+                        alert('Please click the box above to select a CSV file first.'); 
+                        event.preventDefault(); 
+                        return false; 
+                    }
+                    
+                    const dt = new DataTransfer();
+                    dt.items.add(fileInput.files[0]);
+                    const clone = document.getElementById('wsCsvFile');
+                    clone.files = dt.files;
+                    return true;
+                ">
+                    <input type="hidden" name="bearer_token" id="wsCsvBearer">
+                    <input type="hidden" name="cookie" id="wsCsvCookie">
+                    <input type="hidden" name="base_url" id="wsCsvBase">
+                    <input type="hidden" name="limit" id="wsCsvLimit">
+                    <input type="file" name="file" id="wsCsvFile" style="display:none;">
+                    
+                    <button type="submit" class="btn-secondary" style="background: rgba(246,185,59,0.1); border-color: rgba(246,185,59,0.3); color: #f6b93b;" title="Bypasses the UI and directly downloads a CSV file. Use this if the main button is stuck.">
+                        ⬇ Download CSV Directly
+                    </button>
+                </form>
+            </div>
+
+            <!-- Live Progress -->
+            <div id="wsProgressWrap" style="display:none; margin-top: 14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span id="wsProgressText" style="font-size:0.8rem; color:rgba(255,255,255,0.6);">Starting…</span>
+                    <span id="wsProgressCount" style="font-size:0.78rem; font-weight:600; color:#f6b93b;"></span>
+                </div>
+                <div style="width:100%; background:rgba(0,0,0,0.2); border-radius:4px; overflow:hidden; height:6px; margin-bottom:10px;">
+                    <div id="wsProgressBar" style="width:0%; height:100%; background: linear-gradient(90deg,#f6b93b,#e58e26); transition:width 0.3s;"></div>
+                </div>
+                <div id="wsLogFeed" style="max-height:120px; overflow-y:auto; font-size:0.72rem; font-family:monospace; color:rgba(255,255,255,0.5); line-height:1.7; padding:4px 0;"></div>
+            </div>
+
+            <!-- Inline Workspace Results Panel -->
+            <div id="wsResultsPanel" style="display:none; margin-top: 20px;">
+                <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #f6b93b;" id="wsResultsSummary"></div>
+                    <div style="display:flex; gap: 8px;">
+                        <button class="btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;" onclick="exportWsResultsCsv()">⬇ Export CSV</button>
+                        <button class="btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;" onclick="document.getElementById('wsResultsPanel').style.display='none'">✕ Clear</button>
+                    </div>
+                </div>
+                <div id="wsCards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px;"></div>
+            </div>
+        </div>
+
+        <!-- ══ Bulk Move Devices (per-row workspace mapping) ══════════════════ -->
+        <div class="op-card" id="bulkMoveCard" style="grid-column: 1 / -1; background: linear-gradient(135deg, rgba(108,92,231,0.07), rgba(162,155,254,0.04)); border-color: rgba(108,92,231,0.30);">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="#6c5ce7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="17 1 21 5 17 9"></polyline>
+                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                    <polyline points="7 23 3 19 7 15"></polyline>
+                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                </svg>
+                Bulk Move Devices
+                <span style="font-size:0.7rem; font-weight:400; color:rgba(108,92,231,0.75); margin-left:6px; background:rgba(108,92,231,0.12); padding:2px 8px; border-radius:10px; border:1px solid rgba(108,92,231,0.25);">per-row workspace</span>
+            </h3>
+            <p>Upload a CSV with <strong style="color:rgba(255,255,255,0.75);">one destination Workspace ID per row</strong> paired with the device's Serial Number. Each device is moved to its own target workspace — ideal when migrating many devices across multiple accounts at once. (Requires Aquila session)</p>
+
+            <!-- CSV Format Info -->
+            <div style="background:rgba(108,92,231,0.07); border:1px solid rgba(108,92,231,0.2); border-radius:8px; padding:12px 16px; margin-bottom:16px; font-size:0.78rem;">
+                <div style="color:rgba(255,255,255,0.55); margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">📋 Required CSV Format</div>
+                <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
+                    <div>
+                        <div style="color:rgba(255,255,255,0.4); font-size:0.72rem; margin-bottom:4px;">Column A (Destination)</div>
+                        <code style="color:#a29bfe; font-size:0.8rem;">Workspace ID</code>
+                        <span style="color:rgba(255,255,255,0.3); font-size:0.7rem; display:block; margin-top:2px;">also: Customer ID, PCID, platform_customer_id</span>
+                    </div>
+                    <div style="color:rgba(255,255,255,0.2); padding-top:14px;">│</div>
+                    <div>
+                        <div style="color:rgba(255,255,255,0.4); font-size:0.72rem; margin-bottom:4px;">Column B (Device)</div>
+                        <code style="color:#a29bfe; font-size:0.8rem;">Serial Number</code>
+                        <span style="color:rgba(255,255,255,0.3); font-size:0.7rem; display:block; margin-top:2px;">also: SerialNumber, Serial, SN</span>
+                    </div>
+                    <div style="margin-left:auto; align-self:center;">
+                        <button onclick="downloadBulkMoveTemplate()" class="btn-secondary" style="padding:5px 12px; font-size:0.75rem; background:rgba(108,92,231,0.1); border-color:rgba(108,92,231,0.3); color:#a29bfe;">
+                            ⬇ Download Template CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 180px; gap:12px; margin-bottom:14px; align-items:end;">
+                <div class="file-drop" id="bulkMoveFileDrop" onclick="document.getElementById('bulkMoveFile').click()" style="margin:0; border-color:rgba(108,92,231,0.35);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="rgba(108,92,231,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        style="display:block; margin:0 auto 8px;">
+                        <polyline points="16 16 12 12 8 16"></polyline>
+                        <line x1="12" y1="12" x2="12" y2="21"></line>
+                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+                    </svg>
+                    <p id="bulkMoveFileLabel">Click or drag CSV (Workspace ID + Serial Number)<br><span style="font-size:0.68rem; opacity:0.45;">One device per row · multiple workspaces supported</span></p>
+                    <input type="file" id="bulkMoveFile" accept=".csv" style="display:none"
+                        onchange="handleBulkMoveFileSelect(this)">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Folder <span style="opacity:0.5;font-weight:400">(default: 'default')</span></label>
+                    <input type="text" id="bulkMoveFolder" value="default" placeholder="default">
+                </div>
+            </div>
+
+            <!-- Bulk Move Summary Preview (shown after file select) -->
+            <div id="bulkMoveSummary" style="display:none; margin-bottom:14px; padding:10px 14px; background:rgba(0,0,0,0.2); border:1px solid rgba(108,92,231,0.2); border-radius:8px; font-size:0.78rem;">
+                <span id="bulkMoveSummaryText" style="color:rgba(255,255,255,0.6);"></span>
+            </div>
+
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <button class="btn-primary" id="bulkMoveBtn" onclick="bulkMoveDevices()" style="max-width:260px; background:linear-gradient(135deg,#6c5ce7,#a29bfe);">
+                    🚀 Bulk Move Devices
+                </button>
+                <div class="loading-overlay" id="bulkMoveLoader" style="justify-content:center;">
+                    <div class="spinner" style="border-top-color:#a29bfe;"></div>&nbsp;Moving devices — please wait…
+                </div>
+            </div>
+
+            <!-- Dry-Run toggle -->
+            <div class="dry-run-row" style="margin-top:12px;">
+                <label class="dry-run-label">
+                    <input type="checkbox" class="dry-run-checkbox" id="bulkMoveDryRun">
+                    <span class="toggle-track"></span>
+                    <span>🔬 Dry-Run Mode</span>
+                    <span class="dry-run-hint">Simulate only — no changes made</span>
+                </label>
+            </div>
+        </div>
+
     </div>
 
     <!-- ── Results ───────────────────────────────────────────── -->
     <div class="results-section" id="resultsSection">
+        <div id="dryRunBanner" class="dry-run-banner">
+            &#x1F52C;&nbsp; <strong>DRY-RUN MODE</strong> — No changes were made. This is a simulation only.
+        </div>
         <div class="results-header">
             <h3 id="resultsTitle">Results</h3>
             <div class="results-stats" style="align-items: center;">
@@ -1059,6 +1541,7 @@
         const srcWs = document.getElementById('devSrcWs').value.trim();
         const dstWs = document.getElementById('devDstWs').value.trim();
         const file = document.getElementById('devFile').files[0];
+        const isDryRun = document.getElementById('devDryRun')?.checked || false;
 
         if (!bearer) { alert('Please enter a bearer token.'); return; }
         if (!srcWs || !dstWs) { alert('Please enter both source and destination workspace IDs.'); return; }
@@ -1077,16 +1560,121 @@
         fd.append('dest_workspace_id', dstWs);
         fd.append('folder', folder);
         fd.append('file', file);
+        if (isDryRun) fd.append('dry_run', 'true');
 
         try {
             const resp = await fetch('/api/ccs/transfer-devices', { method: 'POST', body: fd });
             const data = await resp.json();
-            showResults(data, 'Device Transfer Results', 'Serial Number');
+            showResults(data, isDryRun ? '&#x1F52C; Dry Run — Transfer Devices' : 'Device Transfer Results', 'Serial Number');
         } catch (e) {
             alert('Error: ' + e.message);
         } finally {
             setLoader('devLoader', false);
             setBtn('devTransferBtn', false);
+        }
+    }
+
+    // ── Bulk Move Devices (per-row workspace CSV) ─────────────────────────────
+
+    /** Parse a CSV file client-side and return array of {workspace_id, serial} */
+    function _parseBulkMoveCsvClient(text) {
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        if (!lines.length) return [];
+        const WORKSPACE_COLS = ['workspace id','workspace_id','customer id','customer_id',
+                                'platform customer id','platform_customer_id','pcid','destination','dest'];
+        const SERIAL_COLS    = ['serial number','serialnumber','serial','sn'];
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+        const wsIdx = headers.findIndex(h => WORKSPACE_COLS.includes(h.toLowerCase()));
+        const snIdx = headers.findIndex(h => SERIAL_COLS.includes(h.toLowerCase()));
+        if (wsIdx === -1 || snIdx === -1) return null; // columns not found
+        const rows = [];
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g,''));
+            const ws = cols[wsIdx] || '';
+            const sn = cols[snIdx] || '';
+            if (ws && sn) rows.push({ workspace_id: ws, serial: sn });
+        }
+        return rows;
+    }
+
+    function handleBulkMoveFileSelect(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const label = document.getElementById('bulkMoveFileLabel');
+        label.innerHTML = `<span class="file-name">${file.name}</span>`;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const rows = _parseBulkMoveCsvClient(e.target.result);
+            const summaryEl = document.getElementById('bulkMoveSummary');
+            const summaryTxt = document.getElementById('bulkMoveSummaryText');
+            if (rows === null) {
+                summaryEl.style.display = 'block';
+                summaryTxt.innerHTML = `⚠️ Could not detect <code>Workspace ID</code> or <code>Serial Number</code> columns. Please check your CSV headers.`;
+                summaryEl.style.borderColor = 'rgba(232,65,24,0.35)';
+                return;
+            }
+            const workspaces = [...new Set(rows.map(r => r.workspace_id))];
+            summaryEl.style.display = 'block';
+            summaryEl.style.borderColor = 'rgba(108,92,231,0.2)';
+            summaryTxt.innerHTML = `
+                ✅ Parsed <strong style="color:#a29bfe">${rows.length}</strong> devices across
+                <strong style="color:#a29bfe">${workspaces.length}</strong> destination workspace(s)
+                <span style="color:rgba(255,255,255,0.3); margin: 0 8px;">·</span>
+                <span style="font-size:0.72rem; color:rgba(255,255,255,0.35);">${workspaces.slice(0,3).join(', ')}${workspaces.length > 3 ? '…' : ''}</span>
+            `;
+        };
+        reader.readAsText(file);
+    }
+
+    function downloadBulkMoveTemplate() {
+        const csv = 'Workspace ID,Serial Number\n5581b87c7ab811ec9b8eb6e766d09539,ABC123XY\n5581b87c7ab811ec9b8eb6e766d09539,DEF456ZZ\na1b2c3d4e5f6789012345678abcdef01,GHI789WW\n';
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'bulk_move_template.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    async function bulkMoveDevices() {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const file = document.getElementById('bulkMoveFile').files[0];
+        const isDryRun = document.getElementById('bulkMoveDryRun')?.checked || false;
+        const folder = (document.getElementById('bulkMoveFolder')?.value || 'default').trim() || 'default';
+
+        if (!bearer) { alert('Please enter a bearer token first.'); return; }
+        if (!file)   { alert('Please select a CSV file.'); return; }
+
+        setLoader('bulkMoveLoader', true);
+        setBtn('bulkMoveBtn', true);
+        hideResults();
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('folder', folder);
+        fd.append('file', file);
+        if (isDryRun) fd.append('dry_run', 'true');
+
+        try {
+            const resp = await fetch('/api/ccs/bulk-move-devices', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (!resp.ok) {
+                alert('Error: ' + (data.detail || JSON.stringify(data)));
+                return;
+            }
+            const wsCount = data.workspaces_count || '?';
+            const title = isDryRun
+                ? `🔬 Dry Run — Bulk Move Devices (${wsCount} workspace${wsCount !== 1 ? 's' : ''})`
+                : `🚀 Bulk Move Results (${wsCount} workspace${wsCount !== 1 ? 's' : ''})`;
+            showResults(data, title, 'Serial Number');
+        } catch (e) {
+            alert('Request failed: ' + e.message);
+        } finally {
+            setLoader('bulkMoveLoader', false);
+            setBtn('bulkMoveBtn', false);
         }
     }
 
@@ -1096,6 +1684,7 @@
         const srcWs = document.getElementById('subSrcWs').value.trim();
         const dstWs = document.getElementById('subDstWs').value.trim();
         const file = document.getElementById('subFile').files[0];
+        const isDryRun = document.getElementById('subDryRun')?.checked || false;
 
         if (!bearer) { alert('Please enter a bearer token.'); return; }
         if (!srcWs || !dstWs) { alert('Please enter both source and destination workspace IDs.'); return; }
@@ -1112,11 +1701,12 @@
         fd.append('source_workspace_id', srcWs);
         fd.append('dest_workspace_id', dstWs);
         fd.append('file', file);
+        if (isDryRun) fd.append('dry_run', 'true');
 
         try {
             const resp = await fetch('/api/ccs/transfer-subscriptions', { method: 'POST', body: fd });
             const data = await resp.json();
-            showResults(data, 'Subscription Transfer Results', 'Subscription Key');
+            showResults(data, isDryRun ? '&#x1F52C; Dry Run — Transfer Subscriptions' : 'Subscription Transfer Results', 'Subscription Key');
         } catch (e) {
             alert('Error: ' + e.message);
         } finally {
@@ -1248,6 +1838,7 @@
         const { bearer, cookie, baseUrl } = getSessionData();
         const wsId = document.getElementById('unclaimWs').value.trim();
         const file = document.getElementById('unclaimFile').files[0];
+        const isDryRun = document.getElementById('unclaimDryRun')?.checked || false;
 
         if (!bearer) { alert('Please enter a bearer token.'); return; }
         if (!wsId) { alert('Please enter the Workspace Customer ID.'); return; }
@@ -1263,11 +1854,12 @@
         fd.append('base_url', baseUrl);
         fd.append('workspace_id', wsId);
         fd.append('file', file);
+        if (isDryRun) fd.append('dry_run', 'true');
 
         try {
             const resp = await fetch('/api/ccs/unclaim-devices', { method: 'POST', body: fd });
             const data = await resp.json();
-            showResults(data, 'Device Unclaim Results', 'Serial Number');
+            showResults(data, isDryRun ? '&#x1F52C; Dry Run — Unclaim Devices' : 'Device Unclaim Results', 'Serial Number');
         } catch (e) {
             alert('Error: ' + e.message);
         } finally {
@@ -1282,6 +1874,7 @@
         const wsId = document.getElementById('claimWs').value.trim();
         const folder = document.getElementById('claimFolder').value.trim() || 'default';
         const file = document.getElementById('claimFile').files[0];
+        const isDryRun = document.getElementById('claimDryRun')?.checked || false;
 
         if (!bearer) { alert('Please enter a bearer token.'); return; }
         if (!wsId) { alert('Please enter the Destination Workspace Customer ID.'); return; }
@@ -1298,11 +1891,12 @@
         fd.append('workspace_id', wsId);
         fd.append('folder', folder);
         fd.append('file', file);
+        if (isDryRun) fd.append('dry_run', 'true');
 
         try {
             const resp = await fetch('/api/ccs/claim-devices', { method: 'POST', body: fd });
             const data = await resp.json();
-            showResults(data, 'Device Claim Results', 'Serial Number');
+            showResults(data, isDryRun ? '&#x1F52C; Dry Run — Claim Devices' : 'Device Claim Results', 'Serial Number');
         } catch (e) {
             alert('Error: ' + e.message);
         } finally {
@@ -1359,6 +1953,7 @@
         const wsId = document.getElementById('delUserWs').value.trim();
         const file = document.getElementById('delUserFile').files[0];
         const skipFile = document.getElementById('delUserSkipFile').files[0];
+        const isDryRun = document.getElementById('delUserDryRun')?.checked || false;
 
         if (!bearer) { alert('Please enter a bearer token.'); return; }
         if (!file) { alert('Please select a CSV file.'); return; }
@@ -1368,7 +1963,7 @@
         hideResults();
 
         document.getElementById('delUserProgressBar').style.width = '0%';
-        document.getElementById('delUserLoaderText').textContent = 'Starting deletion...';
+        document.getElementById('delUserLoaderText').textContent = isDryRun ? 'Starting dry-run simulation...' : 'Starting deletion...';
         document.getElementById('delUserAbortBtn').style.display = 'inline-block';
 
         const fd = new FormData();
@@ -1377,6 +1972,7 @@
         fd.append('base_url', baseUrl);
         fd.append('workspace_id', wsId);
         fd.append('file', file);
+        if (isDryRun) fd.append('dry_run', 'true');
         if (skipFile) fd.append('skip_file', skipFile);
 
         delUserAbortController = new AbortController();
@@ -1413,9 +2009,12 @@
                     if (event.type === 'progress') {
                         const pct = Math.round((event.current / event.total) * 100) || 0;
                         document.getElementById('delUserProgressBar').style.width = pct + '%';
-                        document.getElementById('delUserLoaderText').textContent = `Deleting users (${event.current}/${event.total})...`;
+                        document.getElementById('delUserLoaderText').textContent = isDryRun
+                            ? `Simulating (${event.current}/${event.total})...`
+                            : `Deleting users (${event.current}/${event.total})...`;
                     } else if (event.type === 'complete') {
-                        showResults(event.results, 'User Deletion Results', 'Email / Username');
+                        const title = event.dry_run ? '&#x1F52C; Dry Run — Delete Users' : 'User Deletion Results';
+                        showResults(event.results, title, 'Email / Username');
                         return; // exit cleanly
                     }
                 }
@@ -1487,6 +2086,10 @@
     function showResults(data, title, identifierLabel) {
         currentResults = data.details || [];
         currentResultsType = title.includes('User') ? 'users' : title.includes('Device') ? 'devices' : title.includes('Order') ? 'orders' : 'subscriptions';
+
+        // Dry-run banner
+        const banner = document.getElementById('dryRunBanner');
+        if (banner) banner.style.display = data.dry_run ? 'flex' : 'none';
 
         const section = document.getElementById('resultsSection');
         const tbody = document.getElementById('resultsBody');
@@ -1672,5 +2275,397 @@
         if (id === 'delUserBtn') text = '⚡ Delete Users';
         document.getElementById(id).textContent = disabled ? '⌛ Working...' : text;
     }
+
+    // ── CSV Preview Modal ─────────────────────────────────────────────────────
+    // Single shared helper — call from any operation button.
+    // fileInputId : the <input type="file"> element id
+    // title       : human-readable operation name shown in modal header
+    // onConfirm   : the async function to call when user clicks Confirm
+    function previewThenRun(fileInputId, title, onConfirm) {
+        const fileInput = document.getElementById(fileInputId);
+        if (!fileInput || !fileInput.files[0]) {
+            alert('Please select a CSV file first.');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            const text = e.target.result;
+            // Normalise line endings and filter blanks
+            const rawLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            const lines = rawLines.filter(l => l.trim().length > 0);
+
+            if (lines.length === 0) { alert('The selected file appears to be empty.'); return; }
+
+            const dataRows = lines.length - 1; // exclude header
+            const previewLines = lines.slice(0, Math.min(11, lines.length)); // header + up to 10 rows
+
+            // --- parse columns (handles quoted CSV cells) ---
+            function parseCsvRow(row) {
+                const result = [];
+                let cur = '', inQ = false;
+                for (let i = 0; i < row.length; i++) {
+                    const ch = row[i];
+                    if (ch === '"') { inQ = !inQ; }
+                    else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+                    else { cur += ch; }
+                }
+                result.push(cur.trim());
+                return result;
+            }
+
+            const headers = parseCsvRow(previewLines[0]);
+
+            // Build table head
+            let theadHtml = '<tr><th style="color:rgba(255,255,255,0.3);width:36px">#</th>';
+            headers.forEach(h => { theadHtml += `<th>${h}</th>`; });
+            theadHtml += '</tr>';
+
+            // Build table body (up to 10 data rows)
+            let tbodyHtml = '';
+            for (let i = 1; i < previewLines.length; i++) {
+                const cells = parseCsvRow(previewLines[i]);
+                tbodyHtml += `<tr><td style="color:rgba(255,255,255,0.3)">${i}</td>`;
+                cells.forEach(c => { tbodyHtml += `<td>${c}</td>`; });
+                // Pad missing cells
+                for (let p = cells.length; p < headers.length; p++) { tbodyHtml += '<td>—</td>'; }
+                tbodyHtml += '</tr>';
+            }
+
+            document.getElementById('csvPreviewTitle').textContent = '📋 Preview — ' + title;
+            document.getElementById('csvPreviewSubtitle').textContent =
+                file.name + '  ·  ' + dataRows + ' data row' + (dataRows === 1 ? '' : 's') + ' total';
+            document.getElementById('csvPreviewThead').innerHTML = theadHtml;
+            document.getElementById('csvPreviewTbody').innerHTML = tbodyHtml;
+
+            const rowCountEl = document.getElementById('csvPreviewRowCount');
+            const shown = Math.min(dataRows, 10);
+            rowCountEl.innerHTML =
+                `Showing <strong>${shown}</strong> of <strong>${dataRows}</strong> row${dataRows === 1 ? '' : 's'}`;
+
+            // Wire up Confirm button
+            document.getElementById('csvConfirmBtn').onclick = function () {
+                closeCsvPreview();
+                onConfirm();
+            };
+
+            // Show modal
+            document.getElementById('csvPreviewModal').classList.add('open');
+        };
+
+        reader.readAsText(file);
+    }
+
+    function closeCsvPreview() {
+        document.getElementById('csvPreviewModal').classList.remove('open');
+    }
+
+    // Close on backdrop click
+    document.getElementById('csvPreviewModal').addEventListener('click', function (e) {
+        if (e.target === this) closeCsvPreview();
+    });
+
+    // Close on Escape
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeCsvPreview();
+    });
+
+    // ── Snapshot Helpers ──────────────────────────────────────────────────────
+    function downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType + ';charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    async function snapshotDevices(fileInputId, btnId) {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const file = document.getElementById(fileInputId)?.files[0];
+        if (!bearer) { alert('Please enter a bearer token first.'); return; }
+        if (!file)   { alert('Please select a CSV file first.'); return; }
+
+        const btn = document.getElementById(btnId);
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Snapping...'; }
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/snapshot-devices', { method: 'POST', body: fd });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            const ts = (data.timestamp || new Date().toISOString()).replace(/[:.]/g, '-');
+            let csv = ['Serial Number,Platform Customer ID,Device Model,Part Number,MAC Address,Status,Found,Error'];
+            (data.snapshot || []).forEach(item => {
+                const row = [
+                    item.serial_number || '', item.platform_customer_id || '',
+                    item.device_model || '', item.part_number || '',
+                    item.mac_address || '', item.status || '',
+                    item.found ? 'Yes' : 'No', item.error || ''
+                ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+                csv.push(row.join(','));
+            });
+            downloadFile(csv.join('\n'), `device_snapshot_${ts}.csv`, 'text/csv');
+            if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.disabled = false; btn.textContent = '📸 Snapshot Current State'; }, 2500); }
+        } catch (e) {
+            if (btn) { btn.disabled = false; btn.textContent = '📸 Snapshot Current State'; }
+            alert('Snapshot failed: ' + e.message);
+        }
+    }
+
+    async function snapshotUsers(fileInputId, wsInputId, btnId) {
+        const { bearer, cookie, baseUrl } = getSessionData();
+        const file = document.getElementById(fileInputId)?.files[0];
+        const wsId = document.getElementById(wsInputId)?.value?.trim() || '';
+        if (!bearer) { alert('Please enter a bearer token first.'); return; }
+        if (!file)   { alert('Please select a CSV file first.'); return; }
+
+        const btn = document.getElementById(btnId);
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Snapping...'; }
+
+        const fd = new FormData();
+        fd.append('bearer_token', bearer);
+        fd.append('cookie', cookie);
+        fd.append('base_url', baseUrl);
+        fd.append('workspace_id', wsId);
+        fd.append('file', file);
+
+        try {
+            const resp = await fetch('/api/ccs/snapshot-users', { method: 'POST', body: fd });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            const ts = (data.timestamp || new Date().toISOString()).replace(/[:.]/g, '-');
+            let csv = ['Username,Workspace ID,Company Name,Account Type,Status,Found,Error'];
+            (data.snapshot || []).forEach(item => {
+                const row = [
+                    item.username || '', item.workspace_id || '',
+                    item.company_name || '', item.account_type || '',
+                    item.status || '', item.found ? 'Yes' : 'No', item.error || ''
+                ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+                csv.push(row.join(','));
+            });
+            downloadFile(csv.join('\n'), `user_snapshot_${ts}.csv`, 'text/csv');
+            if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.disabled = false; btn.textContent = '📸 Snapshot User Workspaces'; }, 2500); }
+        } catch (e) {
+            if (btn) { btn.disabled = false; btn.textContent = '📸 Snapshot User Workspaces'; }
+            alert('Snapshot failed: ' + e.message);
+        }
+    }
+
+    // ── Query Workspaces (Bulk CSV, streaming) ────────────────────────────────
+    let _wsLastResults = [];
+
+    function _renderWsCard(ws) {
+        const typeColor   = ws.account_type === 'MSP' ? '#f6b93b' : ws.account_type === 'TENANT' ? '#a29bfe' : '#4cd137';
+        const statusColor = ws.status === 'ACTIVE' ? '#4cd137' : '#e84118';
+        const mfaBadge    = ws.multi_fa_enabled
+            ? '<span style="color:#4cd137;font-size:0.72rem;font-weight:600;">🔒 MFA ON</span>'
+            : '<span style="color:rgba(255,255,255,0.35);font-size:0.72rem;">MFA OFF</span>';
+        const addr    = ws.address || {};
+        const addrStr = [addr.street, addr.city, addr.state, addr.zip, addr.country].filter(Boolean).join(', ') || '—';
+        const searchTag = ws.search_string ? `<div style="font-size:0.68rem;color:rgba(246,185,59,0.6);margin-bottom:6px;">🔍 ${escHtml(ws.search_string)}</div>` : '';
+
+        const card = document.createElement('div');
+        card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(246,185,59,0.2);border-radius:12px;padding:18px;transition:border-color 0.2s;';
+        card.onmouseenter = () => card.style.borderColor = 'rgba(246,185,59,0.45)';
+        card.onmouseleave = () => card.style.borderColor = 'rgba(246,185,59,0.2)';
+        card.innerHTML = `
+            ${searchTag}
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px;">
+                <div style="font-size:0.95rem;font-weight:700;color:#fff;flex:1;word-break:break-word;">${escHtml(ws.company_name || '(No Name)')}</div>
+                <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;">
+                    <span style="background:rgba(0,0,0,0.3);border:1px solid ${typeColor}44;color:${typeColor};font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:12px;text-transform:uppercase;">${escHtml(ws.account_type)}</span>
+                    <span style="background:rgba(0,0,0,0.3);border:1px solid ${statusColor}44;color:${statusColor};font-size:0.68rem;font-weight:600;padding:2px 8px;border-radius:12px;">${escHtml(ws.status)}</span>
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                <code style="font-size:0.72rem;color:rgba(255,255,255,0.55);background:rgba(0,0,0,0.3);padding:3px 8px;border-radius:5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(ws.customer_id)}">${escHtml(ws.customer_id)}</code>
+                <button onclick="navigator.clipboard.writeText('${escHtml(ws.customer_id)}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200);})"
+                    style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:rgba(255,255,255,0.6);cursor:pointer;padding:3px 8px;font-size:0.72rem;" title="Copy Customer ID">⎘</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;margin-bottom:10px;">
+                <div style="font-size:0.75rem;"><span style="color:rgba(255,255,255,0.4);">Region: </span><span style="color:rgba(255,255,255,0.8);">${escHtml(ws.region||'—')}</span></div>
+                <div style="font-size:0.75rem;">${mfaBadge}</div>
+                <div style="font-size:0.75rem;"><span style="color:rgba(255,255,255,0.4);">Mode: </span><span style="color:rgba(255,255,255,0.8);">${escHtml(ws.operational_mode||'—')}</span></div>
+                <div style="font-size:0.75rem;"><span style="color:rgba(255,255,255,0.4);">MSP ID: </span><span style="color:rgba(255,255,255,0.8);">${escHtml(ws.msp_id||'—')}</span></div>
+            </div>
+            ${ws.email       ? `<div style="font-size:0.75rem;color:rgba(255,255,255,0.5);margin-bottom:4px;">📧 ${escHtml(ws.email)}</div>` : ''}
+            ${ws.created_by  ? `<div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-bottom:4px;">Created by: ${escHtml(ws.created_by)}</div>` : ''}
+            ${ws.phone_number? `<div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-bottom:4px;">📞 ${escHtml(ws.phone_number)}</div>` : ''}
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);border-top:1px solid rgba(255,255,255,0.06);margin-top:10px;padding-top:8px;">📍 ${escHtml(addrStr)}</div>
+            ${ws.created_at ? `<div style="font-size:0.68rem;color:rgba(255,255,255,0.25);margin-top:6px;">Created: ${escHtml(ws.created_at.split('T')[0])} | Updated: ${escHtml((ws.updated_at||'').split('T')[0])}</div>` : ''}
+        `;
+        return card;
+    }
+
+    window.queryWorkspaces = async function() {
+        try {
+            console.log('queryWorkspaces started');
+            const fileEl = document.getElementById('wsFile');
+            if (!fileEl || !fileEl.files || fileEl.files.length === 0) {
+                alert('Please select a CSV file first.');
+                return;
+            }
+
+            const btn = document.getElementById('wsQueryBtn');
+            if (btn) btn.disabled = true;
+
+            const panel = document.getElementById('wsResultsPanel');
+            if (panel) panel.style.display = 'none';
+
+            const cards = document.getElementById('wsCards');
+            if (cards) cards.innerHTML = '';
+
+            const sum = document.getElementById('wsResultsSummary');
+            if (sum) sum.textContent = '';
+
+            _wsLastResults = [];
+
+            const progressWrap = document.getElementById('wsProgressWrap');
+            const progressBar  = document.getElementById('wsProgressBar');
+            const progressText = document.getElementById('wsProgressText');
+            const progressCount= document.getElementById('wsProgressCount');
+            const logFeed      = document.getElementById('wsLogFeed');
+            
+            if (progressWrap) progressWrap.style.display = 'block';
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressText) progressText.textContent = 'Starting…';
+            if (progressCount) progressCount.textContent = '';
+            if (logFeed) logFeed.innerHTML = '';
+
+            const fd = new FormData();
+            fd.append('bearer_token', document.getElementById('bearerToken')?.value?.trim() || '');
+            fd.append('cookie',       document.getElementById('cookieStr')?.value?.trim() || '');
+            fd.append('base_url',     document.getElementById('baseUrl')?.value?.trim() || 'https://aquila-user-api.common.cloud.hpe.com');
+            fd.append('limit',        document.getElementById('wsLimit')?.value || '10');
+            fd.append('file',         fileEl.files[0]);
+
+            const resp = await fetch('/api/ccs/query-workspaces', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || resp.statusText);
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); 
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    let evt;
+                    try { evt = JSON.parse(line); } catch (e) { continue; }
+
+                    if (evt.type === 'progress') {
+                        const pct = evt.total ? Math.round((evt.current / evt.total) * 100) : 0;
+                        if (progressBar) progressBar.style.width = pct + '%';
+                        if (progressText) progressText.textContent = evt.message || '';
+                        if (progressCount) progressCount.textContent = `${evt.current} / ${evt.total}`;
+
+                        if (logFeed) {
+                            const color = evt.error ? '#e84118' : (evt.found === 0 ? 'rgba(255,255,255,0.35)' : '#4cd137');
+                            const logLine = document.createElement('div');
+                            logLine.style.color = color;
+                            logLine.textContent = evt.message || '';
+                            logFeed.appendChild(logLine);
+                            logFeed.scrollTop = logFeed.scrollHeight;
+                        }
+                    }
+
+                    if (evt.type === 'complete') {
+                        if (progressBar) progressBar.style.width = '100%';
+                        if (progressText) progressText.textContent = `Done — ${evt.total_searched} searched, ${evt.found_count} workspace(s) found in ${evt.elapsed_seconds}s`;
+                        if (progressCount) progressCount.textContent = '';
+
+                        _wsLastResults = evt.workspaces || [];
+                        if (cards) {
+                            cards.innerHTML = '';
+                            if (_wsLastResults.length === 0) {
+                                cards.innerHTML = '<div style="color:rgba(255,255,255,0.45);font-size:0.85rem;padding:20px;text-align:center;">No workspaces found in any of the searched strings.</div>';
+                            } else {
+                                _wsLastResults.forEach(ws => cards.appendChild(_renderWsCard(ws)));
+                            }
+                        }
+
+                        if (sum) sum.textContent = `${_wsLastResults.length} workspace(s) found | ${evt.not_found_count} not found | ${evt.error_count} error(s) | ${evt.elapsed_seconds}s`;
+                        if (panel) panel.style.display = 'block';
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('queryWorkspaces error:', e);
+            alert('Query Workspaces failed: ' + e.message);
+        } finally {
+            const btn = document.getElementById('wsQueryBtn');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    function escHtml(str) {
+        if (str == null) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function exportWsResultsCsv() {
+        if (!_wsLastResults.length) { alert('No workspace results to export.'); return; }
+        const headers = ['customer_id','company_name','account_type','status','region','msp_id','email','created_by','phone_number','multi_fa_enabled','operational_mode','organization_id','activate_customer_id','created_at','updated_at','address_street','address_city','address_state','address_zip','address_country'];
+        const rows = _wsLastResults.map(ws => [
+            ws.customer_id, ws.company_name, ws.account_type, ws.status, ws.region, ws.msp_id,
+            ws.email, ws.created_by, ws.phone_number, ws.multi_fa_enabled, ws.operational_mode,
+            ws.organization_id, ws.activate_customer_id ?? '', ws.created_at, ws.updated_at,
+            (ws.address||{}).street, (ws.address||{}).city, (ws.address||{}).state,
+            (ws.address||{}).zip, (ws.address||{}).country
+        ].map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','));
+        const csv = [headers.join(','), ...rows].join('\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+        a.download = `workspaces_${document.getElementById('wsSearchStr').value.trim().replace(/\s+/g,'_')}_${Date.now()}.csv`;
+        a.click();
+    }
 </script>
+
+<!-- ── CSV Preview Modal ──────────────────────────────────────────── -->
+<div id="csvPreviewModal" role="dialog" aria-modal="true" aria-labelledby="csvPreviewTitle">
+    <div class="csv-modal-box">
+        <div class="csv-modal-header">
+            <div>
+                <h3 class="csv-modal-title" id="csvPreviewTitle">Preview</h3>
+                <p class="csv-modal-subtitle" id="csvPreviewSubtitle"></p>
+            </div>
+            <button class="csv-modal-close" onclick="closeCsvPreview()" title="Close">✕</button>
+        </div>
+
+        <div class="csv-preview-table-wrap">
+            <table class="csv-preview-table">
+                <thead id="csvPreviewThead"></thead>
+                <tbody id="csvPreviewTbody"></tbody>
+            </table>
+        </div>
+
+        <div class="csv-modal-footer">
+            <span class="csv-row-count" id="csvPreviewRowCount"></span>
+            <div class="csv-modal-actions">
+                <button class="btn-cancel" onclick="closeCsvPreview()">Cancel</button>
+                <button class="btn-confirm" id="csvConfirmBtn">Confirm &amp; Run</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
