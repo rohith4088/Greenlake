@@ -274,7 +274,7 @@
             <span id="btnText">Upload CSV to Continue</span>
             <span id="btnSpinner" style="display: none;">Processing...</span>
         </button>
-        <button id="abortBtn" title="Stop after current device">⏹ Abort</button>
+        <button id="abortBtn" title="Stop after current device">Abort</button>
     </div>
 </div>
 
@@ -291,7 +291,7 @@
         </div>
     </div>
 
-    <div class="aborted-banner" id="abortedBanner">⚠️ Operation was aborted — remaining devices were skipped.</div>
+    <div class="aborted-banner" id="abortedBanner">Operation was aborted — remaining devices were skipped.</div>
 
     <table class="results-table">
         <thead>
@@ -307,7 +307,7 @@
     <!-- Failure Report Panel -->
     <div class="failure-report-panel" id="failureReportPanel">
         <div class="failure-report-header" onclick="toggleFailureReport()">
-            <h4>🔍 Detailed Failure Report</h4>
+            <h4>Detailed Failure Report</h4>
             <span id="failureReportToggle" style="color:rgba(255,255,255,0.5); font-size:0.85em;">▼ Show</span>
         </div>
         <div class="failure-report-body" id="failureReportBody" style="display:none;">
@@ -347,7 +347,7 @@
     fileInput.onchange = () => {
         if (fileInput.files.length > 0) {
             selectedFile = fileInput.files[0];
-            document.getElementById('selectedFile').innerText = `✓ ${selectedFile.name}`;
+            document.getElementById('selectedFile').innerText = `${selectedFile.name}`;
             document.getElementById('selectedFile').style.display = 'block';
             document.getElementById('btnText').innerText = 'Execute Operation';
             executeBtn.disabled = false;
@@ -390,7 +390,7 @@
             }).join('');
 
             document.getElementById('csvPreviewLabel').innerHTML =
-                `♥ <span>${file.name}</span>`;
+                `<span>${file.name}</span>`;
             document.getElementById('csvPreviewCount').textContent =
                 `Showing ${Math.min(5, total)} of ${total} row${total !== 1 ? 's' : ''}`;
             document.getElementById('csvPreviewPanel').style.display = 'block';
@@ -414,7 +414,7 @@
     abortBtn.onclick = async () => {
         if (!currentOperationId) return;
         abortBtn.disabled = true;
-        abortBtn.textContent = '⏳ Aborting...';
+        abortBtn.textContent = 'Aborting...';
         try {
             const r = await fetch(`/api/bulk/abort/${currentOperationId}`, { method: 'DELETE' });
             if (!r.ok) {
@@ -485,7 +485,7 @@
         formData.append('operation_id', currentOperationId);
         abortBtn.style.display = 'inline-block';
         abortBtn.disabled = false;
-        abortBtn.textContent = '⏹ Abort';
+        abortBtn.textContent = 'Abort';
 
         // Show progress
         executeBtn.disabled = true;
@@ -528,7 +528,7 @@
         // Timing badge (assign-subscription returns this)
         const timingBadge = document.getElementById('timingBadge');
         if (data.total_time_seconds !== undefined) {
-            timingBadge.textContent = `⚡ ${data.total_time_seconds}s total`;
+            timingBadge.textContent = `${data.total_time_seconds}s total`;
             timingBadge.style.display = 'inline-block';
         } else {
             timingBadge.style.display = 'none';
@@ -542,8 +542,8 @@
         const successful = data.successful || data.results?.filter(r => r.found || r.success).length || 0;
         const failed = data.failed || data.results?.filter(r => !r.found && !r.success).length || 0;
 
-        document.getElementById('successCount').innerText = `✓ ${successful} successful`;
-        document.getElementById('failCount').innerText = `✗ ${failed} failed`;
+        document.getElementById('successCount').innerText = `${successful} successful`;
+        document.getElementById('failCount').innerText = `${failed} failed`;
 
         // Display results
         const items = data.results || data.details || [];
