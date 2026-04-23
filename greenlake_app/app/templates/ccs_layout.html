@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CCS Manager{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <style>
+        :root {
+            --ccs-bg: #09090b;
+            --ccs-surface: rgba(24, 24, 27, 0.65);
+            --ccs-surface-hover: rgba(39, 39, 42, 0.8);
+            --ccs-border: rgba(255, 255, 255, 0.08);
+            --ccs-primary: #10b981;
+            --ccs-primary-glow: rgba(16, 185, 129, 0.25);
+            --ccs-accent: #3b82f6;
+            --ccs-text: #fafafa;
+            --ccs-text-muted: #a1a1aa;
+            --ccs-danger: #ef4444;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', 'Inter', sans-serif;
+            background-color: var(--ccs-bg);
+            color: var(--ccs-text);
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.08), transparent 40%),
+                radial-gradient(circle at 80% 100%, rgba(59, 130, 246, 0.06), transparent 40%);
+            background-attachment: fixed;
+        }
+
+        .ccs-app {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Top Navigation */
+        .ccs-nav {
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            background: rgba(9, 9, 11, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--ccs-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .ccs-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            text-decoration: none;
+        }
+
+        .ccs-logo-box {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--ccs-primary), var(--ccs-accent));
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            box-shadow: 0 4px 20px var(--ccs-primary-glow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ccs-logo-box::after {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: linear-gradient(rgba(255,255,255,0.2), transparent);
+            transform: rotate(45deg);
+        }
+
+        .ccs-brand h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin: 0;
+            color: #fff;
+            letter-spacing: 0.5px;
+            background: linear-gradient(to right, #fff, #a1a1aa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .ccs-nav-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .ccs-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 12px;
+            color: var(--ccs-text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid transparent;
+        }
+
+        .ccs-nav-item:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .ccs-nav-item.active {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--ccs-primary);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .ccs-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 8px 16px;
+            border-radius: 24px;
+            border: 1px solid var(--ccs-border);
+        }
+
+        .ccs-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--ccs-danger);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+
+        .ccs-status-dot.online {
+            background: var(--ccs-primary);
+            box-shadow: 0 0 10px var(--ccs-primary-glow);
+        }
+
+        .ccs-user span {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--ccs-text-muted);
+        }
+
+        /* Main Layout */
+        .ccs-layout-container {
+            display: flex;
+            flex: 1;
+            align-items: stretch;
+        }
+
+        .ccs-sidebar {
+            width: 260px;
+            background: rgba(9, 9, 11, 0.5);
+            border-right: 1px solid var(--ccs-border);
+            padding: 32px 20px;
+            flex-shrink: 0;
+        }
+
+        .ccs-side-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: sticky;
+            top: 100px;
+        }
+
+        .ccs-side-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: var(--ccs-text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid transparent;
+        }
+
+        .ccs-side-item i {
+            width: 18px;
+            height: 18px;
+        }
+
+        .ccs-side-item:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .ccs-side-item.active {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--ccs-primary);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .ccs-main {
+            flex: 1;
+            padding: 40px;
+            max-width: 1400px;
+            margin: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+    </style>
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <div class="ccs-app">
+        <!-- Top Navigation -->
+        <nav class="ccs-nav">
+            <a href="/ccs-manager" class="ccs-brand">
+                <div class="ccs-logo-box">
+                    <i data-feather="shield"></i>
+                </div>
+                <h1>CCS Manager</h1>
+            </a>
+            
+            <div class="ccs-nav-links">
+                <a href="/" class="ccs-nav-item">
+                    <i data-feather="home"></i>
+                    Back to Home Portal
+                </a>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:12px;">
+                {% if current_user %}
+                <div style="display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.04); padding:8px 14px; border-radius:20px; border:1px solid rgba(255,255,255,0.08);">
+                    <div style="width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 8px rgba(16,185,129,0.5);"></div>
+                    <span style="font-size:0.85rem; font-weight:500; color:rgba(255,255,255,0.75);">{{ current_user.display_name }}</span>
+                    <span style="font-size:0.72rem; padding:2px 8px; border-radius:10px; font-weight:600;
+                        {% if current_user.role == 'admin' %}background:rgba(245,158,11,0.15); color:#f59e0b;{% elif current_user.role == 'operator' %}background:rgba(59,130,246,0.15); color:#60a5fa;{% else %}background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.5);{% endif %}">{{ current_user.role }}</span>
+                </div>
+                <a href="/logout" style="display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.45); font-size:0.82rem; text-decoration:none; transition:all 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.45)'">
+                    <i data-feather="log-out" style="width:14px;height:14px;"></i> Logout
+                </a>
+                {% else %}
+                <a href="/login" class="ccs-nav-item">Sign In</a>
+                {% endif %}
+            </div>
+        </nav>
+
+        <!-- Main Content Layout -->
+        <div class="ccs-layout-container">
+            <!-- Sidebar Navigation -->
+            <aside class="ccs-sidebar">
+                <nav class="ccs-side-nav">
+                    <a href="/ccs-manager/devices" class="ccs-side-item {% if request.url.path.endswith('/devices') %}active{% endif %}">
+                        <i data-feather="server"></i> Devices
+                    </a>
+                    <a href="/ccs-manager/subscriptions" class="ccs-side-item {% if request.url.path.endswith('/subscriptions') %}active{% endif %}">
+                        <i data-feather="credit-card"></i> Subscriptions
+                    </a>
+                    <a href="/ccs-manager/users" class="ccs-side-item {% if request.url.path.endswith('/users') %}active{% endif %}">
+                        <i data-feather="users"></i> Users & Apps
+                    </a>
+                    {% if current_user and current_user.role == 'admin' %}
+                    <div style="height:1px; background:rgba(255,255,255,0.06); margin:12px 4px;"></div>
+                    <a href="/ccs-manager/audit-logs" class="ccs-side-item {% if 'audit-logs' in request.url.path %}active{% endif %}" style="color:rgba(245,158,11,0.75);">
+                        <i data-feather="activity"></i> Audit Logs
+                    </a>
+                    {% endif %}
+                </nav>
+            </aside>
+
+            <main class="ccs-main fade-in">
+                {% block content %}
+                {% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Configuration Modal (Imported from layout styles roughly) -->
+    <style>
+        /* Modals and Forms for CCS Layout */
+        .ccs-modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ccs-modal.show {
+            display: flex;
+        }
+
+        .ccs-modal-content {
+            background: var(--ccs-surface);
+            border: 1px solid var(--ccs-border);
+            border-radius: 24px;
+            padding: 32px;
+            width: 460px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .ccs-modal-close {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: none;
+            border: none;
+            color: var(--ccs-text-muted);
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.2s;
+        }
+
+        .ccs-modal-close:hover {
+            color: #fff;
+        }
+
+        .ccs-form-group {
+            margin-bottom: 20px;
+        }
+
+        .ccs-form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--ccs-text-muted);
+            font-weight: 500;
+        }
+
+        .ccs-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--ccs-border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .ccs-input:focus {
+            outline: none;
+            border-color: var(--ccs-primary);
+            box-shadow: 0 0 0 3px var(--ccs-primary-glow);
+        }
+
+        .ccs-btn {
+            background: linear-gradient(135deg, var(--ccs-primary), #059669);
+            color: #fff;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.1s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px var(--ccs-primary-glow);
+        }
+
+        .ccs-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px var(--ccs-primary-glow);
+        }
+
+        .ccs-btn:active {
+            transform: translateY(1px);
+        }
+
+        .ccs-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 6px;
+            border-radius: 12px;
+        }
+
+        .ccs-tab-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            color: var(--ccs-text-muted);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .ccs-tab-btn.active {
+            background: var(--ccs-surface);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+    </style>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="ccs-modal">
+        <div class="ccs-modal-content">
+            <button class="ccs-modal-close" onclick="closeConfigModal()">
+                <i data-feather="x"></i>
+            </button>
+            <h2 style="margin: 0 0 24px; font-size: 1.4rem;">Configuration</h2>
+
+            <div class="ccs-tabs">
+                <button class="ccs-tab-btn active" onclick="switchTab('client-creds')">Client Credentials</button>
+                <button class="ccs-tab-btn" onclick="switchTab('token-auth')">Token / Cookie</button>
+            </div>
+
+            <form id="configForm">
+                <input type="hidden" id="authMode" name="mode" value="client_credentials">
+
+                <div id="clientCredsFields">
+                    <div class="ccs-form-group">
+                        <label>Client ID</label>
+                        <input type="text" id="client_id" name="client_id" class="ccs-input" placeholder="Enter Client ID">
+                    </div>
+                    <div class="ccs-form-group">
+                        <label>Client Secret</label>
+                        <input type="password" id="client_secret" name="client_secret" class="ccs-input" placeholder="Enter Client Secret">
+                    </div>
+                </div>
+
+                <div id="tokenAuthFields" style="display: none;">
+                    <div class="ccs-form-group">
+                        <label>Access Token</label>
+                        <textarea id="access_token" name="access_token" class="ccs-input" rows="3" placeholder="Enter Bearer Token"></textarea>
+                    </div>
+                    <div class="ccs-form-group">
+                        <label>Cookie (Optional)</label>
+                        <textarea id="cookie" name="cookie" class="ccs-input" rows="2" placeholder="Enter Cookie String"></textarea>
+                    </div>
+                    <div class="ccs-form-group">
+                        <label>Base URL</label>
+                        <input type="text" id="url" name="url" class="ccs-input" value="https://global.api.greenlake.hpe.com">
+                    </div>
+                </div>
+
+                <button type="submit" class="ccs-btn">Save Configuration</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        feather.replace();
+
+        // Modal Logic
+        const modal = document.getElementById("configModal");
+        const btn = document.getElementById("openConfig");
+
+        btn.onclick = function () {
+            modal.classList.add("show");
+            loadConfig();
+        }
+
+        function closeConfigModal() {
+            modal.classList.remove("show");
+        }
+
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                closeConfigModal();
+            }
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.ccs-tab-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (tab === 'client-creds') {
+                document.getElementById('clientCredsFields').style.display = 'block';
+                document.getElementById('tokenAuthFields').style.display = 'none';
+                document.getElementById('authMode').value = 'client_credentials';
+            } else {
+                document.getElementById('clientCredsFields').style.display = 'none';
+                document.getElementById('tokenAuthFields').style.display = 'block';
+                document.getElementById('authMode').value = 'token';
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/auth/config');
+                const data = await res.json();
+
+                if (data.mode === 'token') {
+                    switchTab('token-auth');
+                    if (data.has_token) document.getElementById('access_token').placeholder = "Token Configured (Hidden)";
+                    if (data.has_cookie) document.getElementById('cookie').placeholder = "Cookie Configured (Hidden)";
+                    if (data.url) document.getElementById('url').value = data.url;
+                } else {
+                    switchTab('client-creds');
+                    if (data.client_id) document.getElementById('client_id').value = data.client_id;
+                    document.getElementById('client_secret').placeholder = "Secret Configured (Hidden)";
+                }
+            } catch (e) {
+                console.error("Failed to load config", e);
+            }
+        }
+
+        document.getElementById('configForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const res = await fetch('/api/auth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    alert('Configuration saved successfully!');
+                    closeConfigModal();
+                    location.reload();
+                } else {
+                    const err = await res.json();
+                    alert('Error: ' + err.detail);
+                }
+            } catch (e) {
+                alert('Failed to save configuration: ' + e.message);
+            }
+        };
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

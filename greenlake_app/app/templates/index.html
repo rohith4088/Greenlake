@@ -1,12 +1,262 @@
-{% extends "layout.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenLake Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <style>
+        :root {
+            --bg-base: #020617;
+            --surface: rgba(15, 23, 42, 0.6);
+            --surface-hover: rgba(30, 41, 59, 0.8);
+            --border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-1: #38bdf8;
+            --accent-2: #8b5cf6;
+            --accent-3: #10b981;
+        }
 
-{% block title %}GreenLake Dashboard{% endblock %}
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 0%, rgba(56, 189, 248, 0.08), transparent 40%),
+                radial-gradient(circle at 85% 100%, rgba(139, 92, 246, 0.08), transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.03), transparent 50%);
+        }
 
-{% block page_title %}Dashboard{% endblock %}
+        .hub-header {
+            padding: 40px;
+            text-align: center;
+            margin-top: 40px;
+            animation: fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
 
-{% block content %}
-<div class="welcome-card">
-    <h3>Welcome to GreenLake Dashboard</h3>
-    <p>Select a module from the sidebar to view details.</p>
-</div>
-{% endblock %}
+        .hub-logo {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(56, 189, 248, 0.3);
+            color: #fff;
+        }
+
+        .hub-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            font-weight: 800;
+            margin: 0 0 16px;
+            background: linear-gradient(135deg, #fff 30%, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.03em;
+        }
+
+        .hub-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        .portals-container {
+            display: flex;
+            gap: 40px;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+            flex: 1;
+        }
+
+        .portal-card {
+            background: var(--surface);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            width: 440px;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .portal-card:nth-child(1) { animation-delay: 0.1s; }
+        .portal-card:nth-child(2) { animation-delay: 0.2s; }
+
+        .portal-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 4px;
+            background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+            opacity: 0.5;
+            transition: opacity 0.4s;
+        }
+
+        .portal-card.ccs::before {
+            background: linear-gradient(90deg, var(--accent-3), var(--accent-1));
+        }
+
+        .portal-card:hover {
+            transform: translateY(-8px);
+            background: var(--surface-hover);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .portal-card:hover::before {
+            opacity: 1;
+        }
+
+        .portal-icon-wrapper {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            color: var(--accent-1);
+            transition: all 0.4s ease;
+        }
+
+        .portal-card.ccs .portal-icon-wrapper {
+            color: var(--accent-3);
+        }
+
+        .portal-card:hover .portal-icon-wrapper {
+            background: rgba(56, 189, 248, 0.1);
+            transform: scale(1.05);
+        }
+
+        .portal-card.ccs:hover .portal-icon-wrapper {
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .portal-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 600;
+            margin: 0 0 12px;
+            letter-spacing: -0.01em;
+        }
+
+        .portal-desc {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin: 0 0 32px;
+            flex: 1;
+        }
+
+        .portal-footer {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            color: var(--accent-1);
+            font-size: 0.95rem;
+            transition: gap 0.3s ease;
+        }
+
+        .portal-card.ccs .portal-footer {
+            color: var(--accent-3);
+        }
+
+        .portal-card:hover .portal-footer {
+            gap: 12px;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 900px) {
+            .portals-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .portal-card {
+                width: 100%;
+                max-width: 440px;
+            }
+            .hub-title {
+                font-size: 2.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="hub-header">
+        <div class="hub-logo">
+            <i data-feather="cloud" style="width: 36px; height: 36px;"></i>
+        </div>
+        <h1 class="hub-title">GreenLake Platform Hub</h1>
+        <p class="hub-subtitle">Select a toolset below to manage your infrastructure, devices, and workspaces.</p>
+    </header>
+
+    <div class="portals-container">
+        
+        <!-- Portal 1: Workspace Operations (Bulk Module) -->
+        <a href="/devices" class="portal-card">
+            <div class="portal-icon-wrapper">
+                <i data-feather="layers" style="width: 28px; height: 28px;"></i>
+            </div>
+            <h2 class="portal-title">Workspace Operations</h2>
+            <p class="portal-desc">Manage your inventory within specific workspaces. Access devices, view subscriptions, manage users, and perform bulk administrative operations.</p>
+            <div class="portal-footer">
+                Enter Tool <i data-feather="arrow-right" style="width: 18px; height: 18px;"></i>
+            </div>
+        </a>
+
+        <!-- Portal 2: CCS Manager -->
+        <a href="/ccs-manager" class="portal-card ccs">
+            <div class="portal-icon-wrapper">
+                <i data-feather="shield" style="width: 28px; height: 28px;"></i>
+            </div>
+            <h2 class="portal-title">CCS Manager</h2>
+            <p class="portal-desc">Advanced API operations tool. Manage GreenLake sessions, execute cross-workspace bulk transfers, and claim factory devices directly.</p>
+            <div class="portal-footer">
+                Launch Module <i data-feather="arrow-right" style="width: 18px; height: 18px;"></i>
+            </div>
+        </a>
+
+    </div>
+
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

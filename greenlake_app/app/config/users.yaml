@@ -1,0 +1,21 @@
+users:
+  - username: admin
+    # Password: Admin@123  — change this immediately in production
+    password_hash: "$2b$12$hKS8T9KKKz8KKJRpoFkUZOTaFlOcSmUayMpk5lF4a4slfNUvphoLS"
+    role: admin
+    display_name: Platform Admin
+    enabled: true
+
+  - username: operator1
+    # Password: Operator@123  — change this immediately in production
+    password_hash: "$2b$12$gm60bmSHd0wSgIGB2BpnOuW3VG9ha9GMujgF0Pdra0yqW3GcJzG62"
+    role: operator
+    display_name: Ops Engineer 1
+    enabled: true
+
+  - username: viewer1
+    # Password: Viewer@123  — change this immediately in production
+    password_hash: "$2b$12$1m5tudndhUN6otzSFEWQ5eKzyhGIai0lv23B5YmmmGI8Uq7d/QFGO"
+    role: viewer
+    display_name: Read Only User
+    enabled: true

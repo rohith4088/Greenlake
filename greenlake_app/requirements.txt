@@ -11,3 +11,6 @@ PyYAML
 pytz
 pydantic-settings
 httpx
+redis
+passlib[bcrypt]
+itsdangerous

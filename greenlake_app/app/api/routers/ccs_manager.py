@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional, List
 import csv
@@ -9,6 +9,9 @@ import requests
 import httpx
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from app.auth.session import read_session
+from app.audit.logger import log_operation
+
 
 router = APIRouter()
 
@@ -163,6 +166,19 @@ def poll_async(
             print(f"[CCS] Poll error: {e}")
 
     return {"success": None, "status": "TIMEOUT", "details": "Operation still processing — check manually"}
+
+
+# ============================================================
+# ============================================================
+# HELPERS — Auth
+# ============================================================
+
+def _get_session_user(request: Request) -> dict:
+    """Return current logged-in user dict, or a fallback anonymous dict."""
+    user = read_session(request)
+    if user:
+        return user
+    return {"username": "unknown", "display_name": "Unknown", "role": "unknown"}
 
 
 # ============================================================
@@ -327,6 +343,7 @@ def _transfer_batch_with_retry(
 
 @router.post("/transfer-devices")
 async def ccs_transfer_devices(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     source_workspace_id: str = Form(...),
@@ -392,7 +409,23 @@ async def ccs_transfer_devices(
                 results["details"].append({"serial": serial, "success": False, "error": str(e)})
             time.sleep(0.15)
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
-        return JSONResponse(content={**results, "dry_run": True})
+        
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Devices",
+            endpoint="/api/ccs/transfer-devices",
+            dry_run=bool(dry_run),
+            input_rows=len(serials),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    return JSONResponse(content={**results, "dry_run": True})
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -606,6 +639,7 @@ def _parse_bulk_move_csv(file_content: bytes) -> List[dict]:
 
 @router.post("/bulk-move-devices")
 async def ccs_bulk_move_devices(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie:       str = Form(""),
     base_url:     str = Form(API_BASE),
@@ -665,7 +699,23 @@ async def ccs_bulk_move_devices(
                     "detail":  f"→ Workspace {dest_ws}",
                 })
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
-        return JSONResponse(content={**results, "dry_run": True})
+        
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Bulk Move Devices",
+            endpoint="/api/ccs/bulk-move-devices",
+            dry_run=bool(dry_run),
+            input_rows=len(rows),
+            workspace=None,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    return JSONResponse(content={**results, "dry_run": True})
 
     # ── Real Transfer ────────────────────────────────────────────────────────
     if use_aquila:
@@ -755,6 +805,7 @@ async def ccs_bulk_move_devices(
 
 @router.post("/transfer-subscriptions")
 async def ccs_transfer_subscriptions(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     source_workspace_id: str = Form(...),
@@ -788,7 +839,23 @@ async def ccs_transfer_subscriptions(
                 "detail": f"Subscription key from {source_workspace_id} → {dest_workspace_id}"
             })
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
-        return JSONResponse(content={**results, "dry_run": True})
+        
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Subscriptions",
+            endpoint="/api/ccs/transfer-subscriptions",
+            dry_run=bool(dry_run),
+            input_rows=len(keys),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    return JSONResponse(content={**results, "dry_run": True})
 
     if is_aquila_url(base_url):
         transfer_url = f"{base_url}/support-assistant/v1alpha1/subscription-transfer"
@@ -1241,6 +1308,7 @@ def _run_device_batch(serials: list, base_url: str, headers: dict, max_workers: 
 
 @router.post("/unclaim-devices")
 async def ccs_unclaim_devices(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     workspace_id: str = Form(...),
@@ -1306,7 +1374,23 @@ async def ccs_unclaim_devices(
                 results["details"].append({"serial": serial, "success": False, "error": str(e)})
             time.sleep(0.15)
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
-        return JSONResponse(content={**results, "dry_run": True})
+        
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Unclaim Devices",
+            endpoint="/api/ccs/unclaim-devices",
+            dry_run=bool(dry_run),
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    return JSONResponse(content={**results, "dry_run": True})
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -1399,6 +1483,7 @@ async def ccs_unclaim_devices(
 
 @router.post("/claim-devices")
 async def ccs_claim_devices(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     workspace_id: str = Form(...),
@@ -1464,7 +1549,23 @@ async def ccs_claim_devices(
                 results["details"].append({"serial": serial, "success": False, "error": str(e)})
             time.sleep(0.15)
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
-        return JSONResponse(content={**results, "dry_run": True})
+        
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Claim Devices",
+            endpoint="/api/ccs/claim-devices",
+            dry_run=bool(dry_run),
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    return JSONResponse(content={**results, "dry_run": True})
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
