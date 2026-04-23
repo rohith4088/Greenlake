@@ -58,3 +58,9 @@ e7df0f2acc1211ecb6fdfef9f61ff907
 2168ef90cc1311ecb6fdfef9f61ff907
 b1e3342a7ab711ecb671560735cddfe1
 666a5c347ab811ec8888560735cddfe1
+
+
+Role	Default Password
+admin (Platform Admin)	Admin@123
+operator1 (Ops Engineer 1)	Operator@123
+viewer1 (Read Only)	Viewer@123
