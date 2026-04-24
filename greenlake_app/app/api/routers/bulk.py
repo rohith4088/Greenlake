@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from app.core.client import get_glp_client
+from app.audit.logger import log_operation
 from typing import List, Optional
 import csv
 import io
@@ -11,6 +12,10 @@ import httpx
 import uuid as _uuid
 
 router = APIRouter()
+
+# Workspace tool uses pycentral auth (client credentials), not session auth.
+# We log operations under a synthetic "workspace-tool" actor.
+_WORKSPACE_ACTOR = {"username": "workspace-tool", "display_name": "Workspace Tool", "role": "operator"}
 
 # ── Abort flag store ─────────────────────────────────────────────────────────
 # Maps operation_id -> asyncio.Event  (set = abort requested)
@@ -609,6 +614,19 @@ async def bulk_assign_subscription(
         results['total_time_seconds'] = round(elapsed_lookup + elapsed_patch, 2)
         results['aborted'] = abort_event.is_set()
 
+        try:
+            _serials = [d['serial'] for d in devices[:10]]
+            log_operation(
+                user=_WORKSPACE_ACTOR, operation="Assign Subscription",
+                endpoint="/api/bulk/assign-subscription",
+                input_rows=len(devices),
+                query_input=subscription_key + " → " + ", ".join(_serials),
+                total=results['total'], success=results['successful'], failed=results['failed'],
+                elapsed_sec=results.get('total_time_seconds'),
+                status='ok', detail=f"Sub key: {subscription_key}",
+            )
+        except Exception: pass
+
         return JSONResponse(content=results)
 
     finally:
@@ -771,6 +789,15 @@ async def bulk_unassign_subscription(
                 })
 
         results['aborted'] = abort_event.is_set()
+        try:
+            log_operation(
+                user=_WORKSPACE_ACTOR, operation="Unassign Subscription",
+                endpoint="/api/bulk/unassign-subscription",
+                input_rows=results.get('total'),
+                total=results.get('total'), success=results.get('successful'), failed=results.get('failed'),
+                status='ok',
+            )
+        except Exception: pass
         return JSONResponse(content=results)
     finally:
         _abort_events.pop(op_id, None)
@@ -959,6 +986,16 @@ async def bulk_transfer_devices(
                 time.sleep(12)
 
         results['aborted'] = abort_event.is_set()
+        try:
+            log_operation(
+                user=_WORKSPACE_ACTOR, operation="Transfer Devices to App",
+                endpoint="/api/bulk/transfer-devices",
+                input_rows=results.get('total'),
+                query_input=f"app:{locals().get('application_id','')} region:{locals().get('region','')}",
+                total=results.get('total'), success=results.get('successful'), failed=results.get('failed'),
+                status='ok',
+            )
+        except Exception: pass
         return JSONResponse(content=results)
     finally:
         _abort_events.pop(op_id, None)
@@ -1275,6 +1312,17 @@ async def transfer_workspaces(
     total_time = time.time() - start_time
     print(f"[COMPLETE] All {len(devices_from_csv)} devices processed in {total_time:.2f}s")
 
+    try:
+        log_operation(
+            user=_WORKSPACE_ACTOR, operation="Transfer Workspaces",
+            endpoint="/api/bulk/transfer-workspaces",
+            input_rows=len(devices_from_csv),
+            query_input=f"src→dst: {len(devices_from_csv)} devices",
+            total=results.get('total'), success=results.get('successful'), failed=results.get('failed'),
+            elapsed_sec=round(total_time, 2), status='ok',
+        )
+    except Exception: pass
+
     return JSONResponse(content=results)
 
 
@@ -1428,6 +1476,16 @@ async def transfer_subscriptions(
             time.sleep(RATE_LIMIT_SLEEP)
 
     print(f"[COMPLETE] Subscription transfer done. {results['successful']} ok, {results['failed']} failed.", flush=True)
+    try:
+        _keys_preview = ", ".join(k for k in (results.get('details') or [{}])[:5] if isinstance(k, str))
+        log_operation(
+            user=_WORKSPACE_ACTOR, operation="Transfer Subscriptions",
+            endpoint="/api/bulk/transfer-subscriptions",
+            input_rows=results.get('total'),
+            total=results.get('total'), success=results.get('successful'), failed=results.get('failed'),
+            status='ok',
+        )
+    except Exception: pass
     return JSONResponse(content=results)
 
 

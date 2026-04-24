@@ -958,6 +958,39 @@
             </div>
         </div>
     </div>
+
+    <!-- ── Results ───────────────────────────────────────────── -->
+    <div class="results-section" id="resultsSection">
+        <div id="dryRunBanner" class="dry-run-banner">
+            &nbsp; <strong>DRY-RUN MODE</strong> — No changes were made. This is a simulation only.
+        </div>
+        <div class="results-header">
+            <h3 id="resultsTitle">Results</h3>
+            <div class="results-stats" style="align-items: center;">
+                <span class="stat-badge total" id="statTime" style="background: rgba(10, 189, 227, 0.1); color: #0abde3; border-color: rgba(10, 189, 227, 0.3); display: none;"></span>
+                <span class="stat-badge total" id="statTotal">Total: 0</span>
+                <span class="stat-badge success" id="statSuccess">0</span>
+                <span class="stat-badge fail" id="statFail">0</span>
+                <button id="exportCsvBtn" class="btn-secondary"
+                    style="margin-left: 8px; padding: 4px 12px; font-size: 0.78rem; display: none;"
+                    onclick="exportResultsCsv()">Export CSV</button>
+            </div>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th id="colIdentifier">Identifier</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 
@@ -1088,7 +1121,65 @@
         const label = document.getElementById(labelId);
         if (input.files && input.files[0]) {
             label.innerHTML = `<span class="file-name">${input.files[0].name}</span>`;
+            readCsvHeaders(input.files[0], input.id);
         }
+    }
+
+    function readCsvHeaders(file, inputId) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const lines = e.target.result.split(/\r?\n/);
+            if (lines.length > 0) {
+                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+                renderColumnMapper(inputId, headers);
+            }
+        };
+        reader.readAsText(file.slice(0, 4096)); // Read first 4KB for headers
+    }
+
+    function renderColumnMapper(inputId, headers) {
+        let container = document.getElementById(`mapper-${inputId}`);
+        if (!container) {
+            container = document.createElement('div');
+            container.id = `mapper-${inputId}`;
+            container.style.marginTop = '10px';
+            container.style.marginBottom = '16px';
+            container.style.padding = '12px';
+            container.style.background = 'rgba(0,0,0,0.2)';
+            container.style.border = '1px solid rgba(255,255,255,0.1)';
+            container.style.borderRadius = '8px';
+            
+            const fileDrop = document.getElementById(inputId).closest('.file-drop');
+            if (fileDrop) {
+                fileDrop.parentNode.insertBefore(container, fileDrop.nextSibling);
+            }
+        }
+
+        let labelText = "Email/Username Column";
+        let defaultMatch = (h) => h.toLowerCase().includes('email') || h.toLowerCase().includes('user');
+        
+        if (inputId === 'delUserSkipFile') {
+            labelText = "Workspace ID Column";
+            defaultMatch = (h) => h.toLowerCase().includes('workspace') || h.toLowerCase().includes('customer');
+        } else if (inputId === 'auditSearchFile') {
+            labelText = "Search String Column";
+            defaultMatch = (h) => h.toLowerCase().includes('search') || h.toLowerCase().includes('name') || h.toLowerCase().includes('company');
+        } else if (inputId === 'auditRefFile') {
+            labelText = "App ID Column";
+            defaultMatch = (h) => h.toLowerCase().includes('id');
+        }
+        
+        let html = `<div style="font-size:0.8rem; font-weight:600; color:#fff; margin-bottom:8px;">Map CSV Columns</div>`;
+        
+        html += `<div class="form-group" style="margin-bottom:0;">
+            <label>${labelText}</label>
+            <select id="map-col-${inputId}" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+                <option value="">-- Auto-detect --</option>
+                ${headers.map(h => `<option value="${h}" ${defaultMatch(h)?'selected':''}>${h}</option>`).join('')}
+            </select>
+        </div>`;
+
+        container.innerHTML = html;
     }
 
     // ── Session helpers ───────────────────────────────────────────────────────
@@ -1342,14 +1433,48 @@
         fd.append('cookie', cookie);
         fd.append('base_url', baseUrl);
         fd.append('file', file);
+        
+        const mapCol = document.getElementById('map-col-usrFile')?.value;
+        if (mapCol) fd.append('email_col', mapCol);
+
+        // Use an AbortController so we can enforce our own timeout (backend
+        // may try up to 3 param variants × 30s = 90s per email)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 150000); // 2.5 min
 
         try {
-            const resp = await fetch('/api/ccs/query-users', { method: 'POST', body: fd });
-            const data = await resp.json();
-            showResults(data, 'User Query Results', 'Search String');
+            const resp = await fetch('/api/ccs/query-users', {
+                method: 'POST', body: fd,
+                signal: controller.signal
+            });
+
+            let data;
+            const contentType = resp.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                data = await resp.json();
+            } else {
+                const text = await resp.text();
+                throw new Error(`Server error (HTTP ${resp.status}): ${text.slice(0, 200)}`);
+            }
+
+            if (!resp.ok) {
+                // API returned error JSON — still show in results table
+                data = {
+                    total: 1, successful: 0, failed: 1,
+                    elapsed_seconds: null,
+                    details: [{ key: file.name, success: false, error: data.detail || JSON.stringify(data) }]
+                };
+            }
+
+            showResults(data, 'User Query Results', 'Email / Search String');
         } catch (e) {
-            alert('Error: ' + e.message);
+            if (e.name === 'AbortError') {
+                alert('Request timed out — the query took too long. Try fewer emails per CSV.');
+            } else {
+                alert('Error: ' + e.message);
+            }
         } finally {
+            clearTimeout(timeoutId);
             setLoader('usrLoader', false);
             setBtn('usrQueryBtn', false);
         }
@@ -1585,6 +1710,11 @@
         if (isDryRun) fd.append('dry_run', 'true');
         if (skipFile) fd.append('skip_file', skipFile);
 
+        const emailCol = document.getElementById('map-col-delUserFile')?.value;
+        const skipWsCol = document.getElementById('map-col-delUserSkipFile')?.value;
+        if (emailCol) fd.append('email_col', emailCol);
+        if (skipWsCol) fd.append('skip_ws_col', skipWsCol);
+
         delUserAbortController = new AbortController();
 
         try {
@@ -1663,6 +1793,11 @@
         fd.append('file', searchFile);
         fd.append('ref_file', refFile);
 
+        const searchCol = document.getElementById('map-col-auditSearchFile')?.value;
+        const refAppCol = document.getElementById('map-col-auditRefFile')?.value;
+        if (searchCol) fd.append('search_col', searchCol);
+        if (refAppCol) fd.append('ref_app_col', refAppCol);
+
         try {
             const resp = await fetch('/api/ccs/audit-customer-apps', { method: 'POST', body: fd });
             const data = await resp.json();
@@ -1710,11 +1845,12 @@
         document.getElementById('statSuccess').textContent = `${data.successful}`;
         document.getElementById('statFail').textContent = `${data.failed}`;
         
-        if (data.elapsed_seconds !== undefined) {
-            document.getElementById('statTime').textContent = `${data.elapsed_seconds}s`;
-            document.getElementById('statTime').style.display = 'inline-block';
-        } else {
-            document.getElementById('statTime').style.display = 'none';
+        const statTimeEl = document.getElementById('statTime');
+        if (data.elapsed_seconds !== undefined && statTimeEl) {
+            statTimeEl.textContent = `${data.elapsed_seconds}s`;
+            statTimeEl.style.display = 'inline-block';
+        } else if (statTimeEl) {
+            statTimeEl.style.display = 'none';
         }
 
         const exportBtn = document.getElementById('exportCsvBtn');

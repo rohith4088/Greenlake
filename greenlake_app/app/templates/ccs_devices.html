@@ -1264,7 +1264,60 @@
         const label = document.getElementById(labelId);
         if (input.files && input.files[0]) {
             label.innerHTML = `<span class="file-name">${input.files[0].name}</span>`;
+            readCsvHeaders(input.files[0], input.id);
         }
+    }
+
+    function readCsvHeaders(file, inputId) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const lines = e.target.result.split(/\r?\n/);
+            if (lines.length > 0) {
+                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+                renderColumnMapper(inputId, headers);
+            }
+        };
+        reader.readAsText(file.slice(0, 4096)); // Read first 4KB for headers
+    }
+
+    function renderColumnMapper(inputId, headers) {
+        let container = document.getElementById(`mapper-${inputId}`);
+        if (!container) {
+            container = document.createElement('div');
+            container.id = `mapper-${inputId}`;
+            container.style.marginTop = '10px';
+            container.style.marginBottom = '16px';
+            container.style.padding = '12px';
+            container.style.background = 'rgba(0,0,0,0.2)';
+            container.style.border = '1px solid rgba(255,255,255,0.1)';
+            container.style.borderRadius = '8px';
+            
+            const fileDrop = document.getElementById(inputId).closest('.file-drop');
+            fileDrop.parentNode.insertBefore(container, fileDrop.nextSibling);
+        }
+
+        const isBulkMove = (inputId === 'bulkMoveFile');
+        let html = `<div style="font-size:0.8rem; font-weight:600; color:#fff; margin-bottom:8px;">Map CSV Columns</div>`;
+        
+        html += `<div class="form-group" style="margin-bottom:8px;">
+            <label>Serial Number Column</label>
+            <select id="map-sn-${inputId}" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+                <option value="">-- Auto-detect --</option>
+                ${headers.map(h => `<option value="${h}" ${h.toLowerCase().includes('serial')||h.toLowerCase()==='sn'?'selected':''}>${h}</option>`).join('')}
+            </select>
+        </div>`;
+
+        if (isBulkMove) {
+            html += `<div class="form-group" style="margin-bottom:0;">
+                <label>Destination Workspace ID Column</label>
+                <select id="map-ws-${inputId}" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+                    <option value="">-- Auto-detect --</option>
+                    ${headers.map(h => `<option value="${h}" ${h.toLowerCase().includes('workspace')||h.toLowerCase().includes('customer')||h.toLowerCase().includes('pcid')?'selected':''}>${h}</option>`).join('')}
+                </select>
+            </div>`;
+        }
+
+        container.innerHTML = html;
     }
 
     // ── Session helpers ───────────────────────────────────────────────────────
@@ -1347,6 +1400,9 @@
         fd.append('folder', folder);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
+        
+        const snCol = document.getElementById('map-sn-devFile')?.value;
+        if (snCol) fd.append('sn_col', snCol);
 
         try {
             const resp = await fetch('/api/ccs/transfer-devices', { method: 'POST', body: fd });
@@ -1363,54 +1419,12 @@
     // ── Bulk Move Devices (per-row workspace CSV) ─────────────────────────────
 
     /** Parse a CSV file client-side and return array of {workspace_id, serial} */
-    function _parseBulkMoveCsvClient(text) {
-        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-        if (!lines.length) return [];
-        const WORKSPACE_COLS = ['workspace id','workspace_id','customer id','customer_id',
-                                'platform customer id','platform_customer_id','pcid','destination','dest'];
-        const SERIAL_COLS    = ['serial number','serialnumber','serial','sn'];
-        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
-        const wsIdx = headers.findIndex(h => WORKSPACE_COLS.includes(h.toLowerCase()));
-        const snIdx = headers.findIndex(h => SERIAL_COLS.includes(h.toLowerCase()));
-        if (wsIdx === -1 || snIdx === -1) return null; // columns not found
-        const rows = [];
-        for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g,''));
-            const ws = cols[wsIdx] || '';
-            const sn = cols[snIdx] || '';
-            if (ws && sn) rows.push({ workspace_id: ws, serial: sn });
-        }
-        return rows;
-    }
-
     function handleBulkMoveFileSelect(input) {
         const file = input.files[0];
         if (!file) return;
         const label = document.getElementById('bulkMoveFileLabel');
         label.innerHTML = `<span class="file-name">${file.name}</span>`;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const rows = _parseBulkMoveCsvClient(e.target.result);
-            const summaryEl = document.getElementById('bulkMoveSummary');
-            const summaryTxt = document.getElementById('bulkMoveSummaryText');
-            if (rows === null) {
-                summaryEl.style.display = 'block';
-                summaryTxt.innerHTML = `Could not detect <code>Workspace ID</code> or <code>Serial Number</code> columns. Please check your CSV headers.`;
-                summaryEl.style.borderColor = 'rgba(232,65,24,0.35)';
-                return;
-            }
-            const workspaces = [...new Set(rows.map(r => r.workspace_id))];
-            summaryEl.style.display = 'block';
-            summaryEl.style.borderColor = 'rgba(108,92,231,0.2)';
-            summaryTxt.innerHTML = `
-                Parsed <strong style="color:#a29bfe">${rows.length}</strong> devices across
-                <strong style="color:#a29bfe">${workspaces.length}</strong> destination workspace(s)
-                <span style="color:rgba(255,255,255,0.3); margin: 0 8px;">·</span>
-                <span style="font-size:0.72rem; color:rgba(255,255,255,0.35);">${workspaces.slice(0,3).join(', ')}${workspaces.length > 3 ? '…' : ''}</span>
-            `;
-        };
-        reader.readAsText(file);
+        readCsvHeaders(file, input.id);
     }
 
     function downloadBulkMoveTemplate() {
@@ -1443,6 +1457,11 @@
         fd.append('folder', folder);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
+        
+        const snCol = document.getElementById('map-sn-bulkMoveFile')?.value;
+        const wsCol = document.getElementById('map-ws-bulkMoveFile')?.value;
+        if (snCol) fd.append('sn_col', snCol);
+        if (wsCol) fd.append('ws_col', wsCol);
 
         try {
             const resp = await fetch('/api/ccs/bulk-move-devices', { method: 'POST', body: fd });
@@ -1564,6 +1583,9 @@
         fd.append('cookie', cookie);
         fd.append('base_url', baseUrl);
         fd.append('file', file);
+        
+        const snCol = document.getElementById('map-sn-devQueryFile')?.value;
+        if (snCol) fd.append('sn_col', snCol);
 
         devQueryAbortController = new AbortController();
 
@@ -1641,6 +1663,9 @@
         fd.append('workspace_id', wsId);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
+        
+        const snCol = document.getElementById('map-sn-unclaimFile')?.value;
+        if (snCol) fd.append('sn_col', snCol);
 
         try {
             const resp = await fetch('/api/ccs/unclaim-devices', { method: 'POST', body: fd });
@@ -1678,6 +1703,9 @@
         fd.append('folder', folder);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
+        
+        const snCol = document.getElementById('map-sn-claimFile')?.value;
+        if (snCol) fd.append('sn_col', snCol);
 
         try {
             const resp = await fetch('/api/ccs/claim-devices', { method: 'POST', body: fd });

@@ -8,7 +8,7 @@ from app.core.client import get_glp_client
 from app.auth.users import authenticate_user
 from app.auth.session import read_session, set_session, clear_session
 from app.auth.rbac import get_current_user, require_role
-from app.audit.logger import get_recent_logs
+from app.audit.logger import get_recent_logs, get_log_stats
 import os
 
 app = FastAPI(title="GreenLake Dashboard")
@@ -220,5 +220,6 @@ async def read_audit_logs(request: Request):
     from app.auth.users import role_gte
     if not role_gte(user.get("role", "viewer"), "admin"):
         return HTMLResponse("<h2>403 — Admin access required.</h2>", status_code=403)
-    logs = get_recent_logs(limit=500)
-    return templates.TemplateResponse("admin_logs.html", _ctx(request, logs=logs))
+    logs  = get_recent_logs(limit=500)
+    stats = get_log_stats()
+    return templates.TemplateResponse("admin_logs.html", _ctx(request, logs=logs, stats=stats))

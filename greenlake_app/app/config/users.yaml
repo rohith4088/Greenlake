@@ -19,3 +19,11 @@ users:
     role: viewer
     display_name: Read Only User
     enabled: true
+  - username: rohith
+    # Password: Admin@123  — change this immediately in production
+    password_hash: "$2b$12$hKS8T9KKKz8KKJRpoFkUZOTaFlOcSmUayMpk5lF4a4slfNUvphoLS"
+    role: admin
+    display_name: Platform Admin
+    enabled: true
+
+

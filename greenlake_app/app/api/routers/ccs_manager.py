@@ -61,15 +61,16 @@ def make_headers(
     return headers
 
 
-def parse_csv_column(file_content: bytes, columns: List[str]) -> List[str]:
-    """Generic CSV parser that tries a list of column names and returns the first match."""
+def parse_csv_column(file_content: bytes, columns: List[str], explicit_col: str = None) -> List[str]:
+    """Generic CSV parser that tries a list of column names, prioritizing an explicit choice."""
+    cols_to_check = [explicit_col] if explicit_col else columns
     try:
         # Use TextIOWrapper which natively handles universal newlines and decodes correctly
         text_stream = io.TextIOWrapper(io.BytesIO(file_content), encoding="utf-8-sig")
         reader = csv.DictReader(text_stream)
         values = []
         for row in reader:
-            for col in columns:
+            for col in cols_to_check:
                 if col in row and row[col].strip():
                     values.append(row[col].strip())
                     break
@@ -351,18 +352,19 @@ async def ccs_transfer_devices(
     base_url: str = Form(API_BASE),
     folder: str = Form("default"),        # folder name — 'default' matches CCS UI dropdown
     dry_run: bool = Form(False),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    sn_col: str = Form(None)
 ):
     """
-    Transfer devices (by serial) using the real CCS-Manager endpoint discovered from DevTools:
-      POST /support-assistant/v1alpha1/devices-to-customer   (aquila session)
-      PATCH /devices/v1beta1/devices                         (public API fallback)
+    Transfer devices from a source workspace to a destination workspace.
+    This works for both standard GLP environments and Aquila (via support-assistant).
     """
     start_time = time.time()
     content = await file.read()
     serials = parse_csv_column(
         content,
-        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"]
+        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"],
+        explicit_col=sn_col
     )
 
     if not serials:
@@ -410,22 +412,23 @@ async def ccs_transfer_devices(
             time.sleep(0.15)
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
         
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Transfer Devices",
-            endpoint="/api/ccs/transfer-devices",
-            dry_run=bool(dry_run),
-            input_rows=len(serials),
-            workspace=dest_workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
+        # ── Audit log ─────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            log_operation(
+                user=_au, operation="Transfer Devices",
+                endpoint="/api/ccs/transfer-devices",
+                dry_run=bool(dry_run),
+                input_rows=len(serials),
+                workspace=dest_workspace_id,
+                total=results.get('total'), success=results.get('successful'),
+                failed=results.get('failed'), status='ok'
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
 
-    return JSONResponse(content={**results, "dry_run": True})
+        return JSONResponse(content={**results, "dry_run": True})
+
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -509,6 +512,81 @@ async def ccs_transfer_devices(
                 results["details"].append({"serial": serial, "success": False, "error": str(e)})
             time.sleep(0.3)
 
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Devices",
+            endpoint="/api/ccs/transfer-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Bulk Move Devices",
+            endpoint="/api/ccs/bulk-move-devices",
+            dry_run=False,
+            input_rows=len(rows),
+            workspace='',
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Subscriptions",
+            endpoint="/api/ccs/transfer-subscriptions",
+            dry_run=False,
+            input_rows=len(keys),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Unclaim Devices",
+            endpoint="/api/ccs/unclaim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Claim Devices",
+            endpoint="/api/ccs/claim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
     return JSONResponse(content=results)
 
@@ -518,7 +596,7 @@ async def ccs_transfer_devices(
 # ============================================================
 
 
-def _parse_bulk_move_csv(file_content: bytes) -> List[dict]:
+def _parse_bulk_move_csv(file_content: bytes, explicit_ws_col: str = None, explicit_sn_col: str = None) -> List[dict]:
     """
     Parse a 2-column file (CSV or TSV) where each row has a destination workspace ID
     and a device serial number.
@@ -572,8 +650,8 @@ def _parse_bulk_move_csv(file_content: bytes) -> List[dict]:
         raw_headers = list(reader.fieldnames or [])
         norm_to_raw = {_norm(h): h for h in raw_headers}
 
-        ws_col = next((norm_to_raw[n] for n in norm_to_raw if n in WORKSPACE_COLS), None)
-        sn_col = next((norm_to_raw[n] for n in norm_to_raw if n in SERIAL_COLS),    None)
+        ws_col = explicit_ws_col if explicit_ws_col else next((norm_to_raw[n] for n in norm_to_raw if n in WORKSPACE_COLS), None)
+        sn_col = explicit_sn_col if explicit_sn_col else next((norm_to_raw[n] for n in norm_to_raw if n in SERIAL_COLS),    None)
 
         # ── Step 3: header-split fallback ─────────────────────────────────────
         # If the header itself used a different separator (e.g. EM SPACE) the
@@ -646,6 +724,8 @@ async def ccs_bulk_move_devices(
     folder:       str = Form("default"),
     dry_run:      bool = Form(False),
     file: UploadFile = File(...),
+    sn_col:       str = Form(None),
+    ws_col:       str = Form(None)
 ):
     """
     Bulk-move devices to their individual destination workspaces.
@@ -657,7 +737,7 @@ async def ccs_bulk_move_devices(
     """
     start_time = time.time()
     content = await file.read()
-    rows = _parse_bulk_move_csv(content)
+    rows = _parse_bulk_move_csv(content, explicit_ws_col=ws_col, explicit_sn_col=sn_col)
 
     if not rows:
         raise HTTPException(
@@ -700,22 +780,23 @@ async def ccs_bulk_move_devices(
                 })
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
         
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Bulk Move Devices",
-            endpoint="/api/ccs/bulk-move-devices",
-            dry_run=bool(dry_run),
-            input_rows=len(rows),
-            workspace=None,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
+        # ── Audit log ─────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            log_operation(
+                user=_au, operation="Bulk Move Devices",
+                endpoint="/api/ccs/bulk-move-devices",
+                dry_run=bool(dry_run),
+                input_rows=len(rows),
+                workspace=None,
+                total=results.get('total'), success=results.get('successful'),
+                failed=results.get('failed'), status='ok'
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
 
-    return JSONResponse(content={**results, "dry_run": True})
+        return JSONResponse(content={**results, "dry_run": True})
+
 
     # ── Real Transfer ────────────────────────────────────────────────────────
     if use_aquila:
@@ -795,6 +876,81 @@ async def ccs_bulk_move_devices(
                     results["details"].append({"serial": serial, "success": False, "error": str(e)})
                 time.sleep(0.3)
 
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Devices",
+            endpoint="/api/ccs/transfer-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Bulk Move Devices",
+            endpoint="/api/ccs/bulk-move-devices",
+            dry_run=False,
+            input_rows=len(rows),
+            workspace='',
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Subscriptions",
+            endpoint="/api/ccs/transfer-subscriptions",
+            dry_run=False,
+            input_rows=len(keys),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Unclaim Devices",
+            endpoint="/api/ccs/unclaim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Claim Devices",
+            endpoint="/api/ccs/claim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
     return JSONResponse(content=results)
 
@@ -812,7 +968,8 @@ async def ccs_transfer_subscriptions(
     dest_workspace_id: str = Form(...),
     base_url: str = Form(API_BASE),
     dry_run: bool = Form(False),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    key_col: str = Form(None)
 ):
     """
     Transfer subscriptions (by key) from source → destination workspace.
@@ -821,7 +978,8 @@ async def ccs_transfer_subscriptions(
     content = await file.read()
     keys = parse_csv_column(
         content,
-        ["Subscription Key", "SubscriptionKey", "Key", "key", "subscription_key"]
+        ["Subscription Key", "SubscriptionKey", "Key", "key", "subscription_key"],
+        explicit_col=key_col
     )
 
     if not keys:
@@ -840,22 +998,23 @@ async def ccs_transfer_subscriptions(
             })
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
         
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Transfer Subscriptions",
-            endpoint="/api/ccs/transfer-subscriptions",
-            dry_run=bool(dry_run),
-            input_rows=len(keys),
-            workspace=dest_workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
+        # ── Audit log ─────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            log_operation(
+                user=_au, operation="Transfer Subscriptions",
+                endpoint="/api/ccs/transfer-subscriptions",
+                dry_run=bool(dry_run),
+                input_rows=len(keys),
+                workspace=dest_workspace_id,
+                total=results.get('total'), success=results.get('successful'),
+                failed=results.get('failed'), status='ok'
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
 
-    return JSONResponse(content={**results, "dry_run": True})
+        return JSONResponse(content={**results, "dry_run": True})
+
 
     if is_aquila_url(base_url):
         transfer_url = f"{base_url}/support-assistant/v1alpha1/subscription-transfer"
@@ -956,6 +1115,81 @@ async def ccs_transfer_subscriptions(
 
             time.sleep(0.3)
 
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Devices",
+            endpoint="/api/ccs/transfer-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Bulk Move Devices",
+            endpoint="/api/ccs/bulk-move-devices",
+            dry_run=False,
+            input_rows=len(rows),
+            workspace='',
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Subscriptions",
+            endpoint="/api/ccs/transfer-subscriptions",
+            dry_run=False,
+            input_rows=len(keys),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Unclaim Devices",
+            endpoint="/api/ccs/unclaim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Claim Devices",
+            endpoint="/api/ccs/claim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
     return JSONResponse(content=results)
 
@@ -966,10 +1200,12 @@ async def ccs_transfer_subscriptions(
 
 @router.post("/query-users")
 async def ccs_query_users(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    email_col: str = Form(None)
 ):
     """
     Query users by search string from a CSV file.
@@ -979,7 +1215,8 @@ async def ccs_query_users(
     content = await file.read()
     search_strings = parse_csv_column(
         content,
-        ["Email", "email", "Search String", "search_string", "Search", "User", "Username", "username"]
+        ["Email", "email", "Search String", "search_string", "Search", "User", "Username", "username"],
+        explicit_col=email_col
     )
 
     if not search_strings:
@@ -995,55 +1232,84 @@ async def ccs_query_users(
     endpoint = f"{base_url}/support-assistant/v1alpha1/customers"
 
     for search_str in search_strings:
-        print(f"[CCS] Querying user customers for: {search_str}")
-        params = {
-            "limit": 1000,
-            "offset": 0,
-            "username": search_str
-        }
-        
+        print(f"[CCS] Querying user customers for: {search_str}", flush=True)
+
+        # Try multiple parameter names — the API may use any of these
+        param_variants = [
+            {"search_string": search_str, "limit": 100, "offset": 0},
+            {"external_id": search_str,   "limit": 100, "offset": 0},
+            {"username":     search_str,  "limit": 100, "offset": 0},
+        ]
+
+        resp = None
+        data = {}
+        for params in param_variants:
+            try:
+                resp = requests.get(endpoint, headers=headers, params=params, timeout=10)
+                print(f"[CCS] query-users param={list(params.keys())[0]} → HTTP {resp.status_code} | body[:200]={resp.text[:200]}", flush=True)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("customers") or data.get("items") or data.get("users"):
+                        break  # got real results, stop trying
+                    # 200 but empty list — keep trying other param names
+            except Exception as ex:
+                print(f"[CCS] query-users request error: {ex}", flush=True)
+
         try:
-            resp = requests.get(endpoint, headers=headers, params=params, timeout=30)
+            if resp is None:
+                raise Exception("All request attempts failed")
+
             if resp.status_code == 200:
-                data = resp.json()
-                customers = data.get("customers", [])
+                # Support both 'customers' and 'users' / 'items' response shapes
+                customers = data.get("customers") or data.get("users") or data.get("items") or []
                 if customers:
                     for cust in customers:
-                        comp_name = cust.get("contact", {}).get("company_name", "")
-                        created_by = cust.get("contact", {}).get("created_by", "")
-                        cust_id = cust.get("customer_id", "")
-                        acct_type = cust.get("account_type", "")
-                        status = cust.get("account", {}).get("status", "")
-                        msp_id = cust.get("msp_id", "")
-                        region = cust.get("region", "")
-                        
+                        contact   = cust.get("contact", {}) or {}
+                        account   = cust.get("account",  {}) or {}
+                        comp_name  = contact.get("company_name", "")
+                        created_by = contact.get("created_by", "")
+                        cust_id    = cust.get("customer_id", "") or cust.get("id", "")
+                        acct_type  = cust.get("account_type", "")
+                        status     = account.get("status", "") or cust.get("status", "")
+                        msp_id     = cust.get("msp_id", "")
+                        region     = cust.get("region", "")
+                        email      = cust.get("email", "") or cust.get("username", "") or search_str
+                        country    = contact.get("country", "")
+
                         detail_str = f"Company: {comp_name} | ID: {cust_id} | Type: {acct_type} | Status: {status}"
                         results["details"].append({
-                            "key": search_str, 
-                            "success": True, 
-                            "status": "Found", 
-                            "detail": detail_str,
+                            "key":     search_str,
+                            "success": True,
+                            "status":  "Found",
+                            "detail":  detail_str,
                             "raw": {
+                                "email":        email,
                                 "company_name": comp_name,
-                                "created_by": created_by,
-                                "customer_id": cust_id,
+                                "created_by":   created_by,
+                                "customer_id":  cust_id,
                                 "account_type": acct_type,
-                                "status": status,
-                                "msp_id": msp_id,
-                                "region": region
+                                "status":       status,
+                                "msp_id":       msp_id,
+                                "region":       region,
+                                "country":      country,
                             }
                         })
                     results["successful"] += 1
                 else:
+                    # 200 but zero matches — show raw response snippet for debugging
+                    raw_snippet = str(data)[:200]
                     results["failed"] += 1
-                    results["details"].append({"key": search_str, "success": False, "error": "No mapped workspaces found"})
+                    results["details"].append({
+                        "key": search_str, "success": False,
+                        "error": f"No users found. Raw response: {raw_snippet}"
+                    })
             else:
                 error_msg = f"HTTP {resp.status_code}"
                 try:
                     err = resp.json()
                     error_msg = err.get("message", err.get("detail", str(err)))
                 except Exception:
-                    error_msg = resp.text[:200] or error_msg
+                    error_msg = resp.text[:300] or error_msg
                 results["failed"] += 1
                 results["details"].append({"key": search_str, "success": False, "error": error_msg})
         except Exception as e:
@@ -1053,6 +1319,26 @@ async def ccs_query_users(
         time.sleep(0.3)
 
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+    # ── Audit log ──────────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        _qi = ", ".join(str(x) for x in search_strings[:10])
+        log_operation(
+            user=_au, operation="Query Users",
+            endpoint="/api/ccs/query-users",
+            input_rows=len(search_strings),
+            query_input=_qi[:500] if _qi else None,
+            base_url=str(base_url),
+            total=results.get('total'),
+            success=results.get('successful'),
+            failed=results.get('failed'),
+            elapsed_sec=float(results.get('elapsed_seconds', 0)),
+            status='ok',
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
     return JSONResponse(content=results)
 
 
@@ -1212,7 +1498,8 @@ async def ccs_query_devices(
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    sn_col: str = Form(None)
 ):
     """
     Query detailed device configuration from Aquila support-assistant API.
@@ -1224,7 +1511,8 @@ async def ccs_query_devices(
     content = await file.read()
     serials = parse_csv_column(
         content,
-        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL", "mac", "MAC"]
+        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL", "mac", "MAC"],
+        explicit_col=sn_col
     )
 
     if not serials:
@@ -1280,6 +1568,28 @@ async def ccs_query_devices(
                 await asyncio.sleep(1.0)
 
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+        # ── Audit log ──────────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            _qi = ", ".join(str(x) for x in (serials or [])[:10]) if isinstance((serials or []), list) else str(serials or "")
+            log_operation(
+                user=_au, operation="Query Devices",
+                endpoint="/api/ccs/query-devices",
+                dry_run=bool(locals().get('dry_run', False)),
+                input_rows=len(serials),
+                query_input=_qi[:500] if _qi else None,
+                workspace=str(workspace_id) if workspace_id else None,
+                base_url=str(locals().get('base_url', '')),
+                total=results.get('total') if isinstance(results, dict) else None,
+                success=results.get('successful') if isinstance(results, dict) else None,
+                failed=results.get('failed') if isinstance(results, dict) else None,
+                elapsed_sec=float(results.get('elapsed_seconds')) if results.get('elapsed_seconds') is not None else None,
+                status='ok',
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
+
         yield json.dumps({"type": "complete", "results": results}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
@@ -1299,6 +1609,8 @@ def _run_device_batch(serials: list, base_url: str, headers: dict, max_workers: 
                 results[idx] = future.result()
             except Exception as e:
                 results[idx] = {"key": serials[idx], "success": False, "error": str(e)}
+
+    
     return results
 
 
@@ -1314,7 +1626,8 @@ async def ccs_unclaim_devices(
     workspace_id: str = Form(...),
     base_url: str = Form(API_BASE),
     dry_run: bool = Form(False),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    sn_col: str = Form(None)
 ):
     """
     Unclaim devices in bulk from a workspace (return to factory).
@@ -1324,7 +1637,8 @@ async def ccs_unclaim_devices(
     content = await file.read()
     serials = parse_csv_column(
         content,
-        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"]
+        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"],
+        explicit_col=sn_col
     )
 
     if not serials:
@@ -1375,22 +1689,23 @@ async def ccs_unclaim_devices(
             time.sleep(0.15)
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
         
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Unclaim Devices",
-            endpoint="/api/ccs/unclaim-devices",
-            dry_run=bool(dry_run),
-            input_rows=len(serials),
-            workspace=workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
+        # ── Audit log ─────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            log_operation(
+                user=_au, operation="Unclaim Devices",
+                endpoint="/api/ccs/unclaim-devices",
+                dry_run=bool(dry_run),
+                input_rows=len(serials),
+                workspace=workspace_id,
+                total=results.get('total'), success=results.get('successful'),
+                failed=results.get('failed'), status='ok'
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
 
-    return JSONResponse(content={**results, "dry_run": True})
+        return JSONResponse(content={**results, "dry_run": True})
+
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -1473,6 +1788,28 @@ async def ccs_unclaim_devices(
                 results["details"].append({"serial": serial, "success": False, "error": str(e)})
             time.sleep(0.3)
 
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        rollback_payload = {
+            "action": "claim",
+            "workspace_id": workspace_id,
+            "serials": [d["serial"] for d in results["details"] if d.get("success") and "Would" not in d.get("status", "")]
+        } if not dry_run else None
+        
+        log_operation(
+            user=_au, operation="Unclaim Devices",
+            endpoint="/api/ccs/unclaim-devices",
+            dry_run=bool(dry_run),
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok',
+            rollback_data=json.dumps(rollback_payload) if rollback_payload and rollback_payload["serials"] else None
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
     return JSONResponse(content=results)
 
@@ -1490,7 +1827,8 @@ async def ccs_claim_devices(
     folder: str = Form("default"),
     base_url: str = Form(API_BASE),
     dry_run: bool = Form(False),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    sn_col: str = Form(None)
 ):
     """
     Claim devices from Aruba Factory into a specified workspace.
@@ -1500,7 +1838,8 @@ async def ccs_claim_devices(
     content = await file.read()
     serials = parse_csv_column(
         content,
-        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"]
+        ["Serial Number", "SerialNumber", "Serial", "SN", "serial", "SERIAL"],
+        explicit_col=sn_col
     )
 
     if not serials:
@@ -1550,22 +1889,23 @@ async def ccs_claim_devices(
             time.sleep(0.15)
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
         
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Claim Devices",
-            endpoint="/api/ccs/claim-devices",
-            dry_run=bool(dry_run),
-            input_rows=len(serials),
-            workspace=workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
+        # ── Audit log ─────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            log_operation(
+                user=_au, operation="Claim Devices",
+                endpoint="/api/ccs/claim-devices",
+                dry_run=bool(dry_run),
+                input_rows=len(serials),
+                workspace=workspace_id,
+                total=results.get('total'), success=results.get('successful'),
+                failed=results.get('failed'), status='ok'
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
 
-    return JSONResponse(content={**results, "dry_run": True})
+        return JSONResponse(content={**results, "dry_run": True})
+
 
     if use_aquila:
         # ── Real support-assistant endpoint ─────────────────────────────
@@ -1648,6 +1988,81 @@ async def ccs_claim_devices(
                 results["details"].append({"serial": serial, "success": False, "error": str(e)})
             time.sleep(0.3)
 
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Devices",
+            endpoint="/api/ccs/transfer-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Bulk Move Devices",
+            endpoint="/api/ccs/bulk-move-devices",
+            dry_run=False,
+            input_rows=len(rows),
+            workspace='',
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Transfer Subscriptions",
+            endpoint="/api/ccs/transfer-subscriptions",
+            dry_run=False,
+            input_rows=len(keys),
+            workspace=dest_workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Unclaim Devices",
+            endpoint="/api/ccs/unclaim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
+    # ── Audit log ─────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation="Claim Devices",
+            endpoint="/api/ccs/claim-devices",
+            dry_run=False,
+            input_rows=len(serials),
+            workspace=workspace_id,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
     return JSONResponse(content=results)
 
@@ -1658,6 +2073,7 @@ async def ccs_claim_devices(
 
 @router.post("/snapshot-devices")
 async def ccs_snapshot_devices(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
@@ -1711,6 +2127,28 @@ async def ccs_snapshot_devices(
             snapshot.append({"serial_number": serial, "found": False, "error": str(e)})
         time.sleep(0.15)
 
+
+    # ── Audit log ──────────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        _qi = ", ".join(str(x) for x in (serials or [])[:10]) if isinstance((serials or []), list) else str(serials or "")
+        log_operation(
+            user=_au, operation="Snapshot Devices",
+            endpoint="/api/ccs/snapshot-devices",
+            dry_run=bool(locals().get('dry_run', False)),
+            input_rows=len(serials),
+            query_input=_qi[:500] if _qi else None,
+            workspace=str(workspace_id) if workspace_id else None,
+            base_url=str(locals().get('base_url', '')),
+            total=results.get('total') if isinstance(results, dict) else None,
+            success=results.get('successful') if isinstance(results, dict) else None,
+            failed=results.get('failed') if isinstance(results, dict) else None,
+            elapsed_sec=float(None) if None is not None else None,
+            status='ok',
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+    
     return JSONResponse(content={
         "snapshot": snapshot,
         "total": len(serials),
@@ -1724,6 +2162,7 @@ async def ccs_snapshot_devices(
 
 @router.post("/snapshot-users")
 async def ccs_snapshot_users(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
@@ -1783,6 +2222,28 @@ async def ccs_snapshot_users(
                 snapshot.append({"username": username, "found": False, "error": str(e)})
         time.sleep(0.2)
 
+
+    # ── Audit log ──────────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        _qi = ", ".join(str(x) for x in (usernames or [])[:10]) if isinstance((usernames or []), list) else str(usernames or "")
+        log_operation(
+            user=_au, operation="Snapshot Users",
+            endpoint="/api/ccs/snapshot-users",
+            dry_run=bool(locals().get('dry_run', False)),
+            input_rows=len(usernames),
+            query_input=_qi[:500] if _qi else None,
+            workspace=str(workspace_id) if workspace_id else None,
+            base_url=str(locals().get('base_url', '')),
+            total=results.get('total') if isinstance(results, dict) else None,
+            success=results.get('successful') if isinstance(results, dict) else None,
+            failed=results.get('failed') if isinstance(results, dict) else None,
+            elapsed_sec=float(None) if None is not None else None,
+            status='ok',
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+    
     return JSONResponse(content={
         "snapshot": snapshot,
         "total": len(usernames),
@@ -1796,10 +2257,12 @@ async def ccs_snapshot_users(
 
 @router.post("/query-orders")
 async def ccs_query_orders(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    order_col: str = Form(None)
 ):
     """
     Query detailed order information (Subscription Keys, SKUs, etc) using Order Numbers from a CSV file.
@@ -1809,7 +2272,8 @@ async def ccs_query_orders(
     content = await file.read()
     order_numbers = parse_csv_column(
         content,
-        ["Order Number", "OrderNumber", "Order", "order_number", "order", "Quote", "quote"]
+        ["Order Number", "OrderNumber", "Order", "order_number", "order", "Quote", "quote"],
+        explicit_col=order_col
     )
 
     if not order_numbers:
@@ -1895,12 +2359,257 @@ async def ccs_query_orders(
         time.sleep(0.3)
 
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+    # ── Audit log ──────────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        _qi = ", ".join(str(x) for x in (order_numbers or [])[:10]) if isinstance((order_numbers or []), list) else str(order_numbers or "")
+        log_operation(
+            user=_au, operation="Query Orders",
+            endpoint="/api/ccs/query-orders",
+            dry_run=bool(locals().get('dry_run', False)),
+            input_rows=len(order_numbers),
+            query_input=_qi[:500] if _qi else None,
+            workspace=str(None) if None else None,
+            base_url=str(locals().get('base_url', '')),
+            total=results.get('total') if isinstance(results, dict) else None,
+            success=results.get('successful') if isinstance(results, dict) else None,
+            failed=results.get('failed') if isinstance(results, dict) else None,
+            elapsed_sec=float(results.get('elapsed_seconds')) if results.get('elapsed_seconds') is not None else None,
+            status='ok',
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+    
     return JSONResponse(content=results)
 
 
 # ============================================================
-# DELETE USERS (CCS-Manager session)
+# QUERY SUBSCRIPTIONS BY KEY PATTERN (CCS-Manager session)
 # ============================================================
+
+@router.post("/query-subscriptions")
+async def ccs_query_subscriptions(
+    request: Request = None,
+    bearer_token: str = Form(...),
+    cookie: str = Form(""),
+    base_url: str = Form(API_BASE),
+    file: UploadFile = File(...),
+    key_col: str = Form(None)
+):
+    """
+    Bulk-query subscription details using subscription key patterns or full keys
+    from a CSV file.
+    Calls: GET /support-assistant/v1alpha1/subscriptions?subscription_key_pattern=<KEY>
+    Returns full subscription metadata: tier, type, dates, quantity, SKU, workspace, etc.
+    """
+    start_time = time.time()
+    content = await file.read()
+
+    key_patterns = parse_csv_column(
+        content,
+        [
+            "Subscription Key", "subscription_key", "SubscriptionKey",
+            "Key", "key", "Pattern", "pattern",
+            "Subscription", "subscription"
+        ],
+        explicit_col=key_col
+    )
+
+    if not key_patterns:
+        raise HTTPException(status_code=400, detail="No subscription keys or patterns found in CSV")
+
+    use_aquila = is_aquila_url(base_url)
+    if not use_aquila:
+        raise HTTPException(
+            status_code=400,
+            detail="Query Subscriptions requires an Aquila session base URL (aquila-user-api.common.cloud.hpe.com)"
+        )
+
+    headers = make_headers(bearer_token, cookie, base_url=base_url)
+    results = {"total": len(key_patterns), "successful": 0, "failed": 0, "details": [], "elapsed_seconds": 0}
+
+    for pattern in key_patterns:
+        print(f"[CCS] Querying subscription pattern: {pattern}")
+        endpoint = f"{base_url}/support-assistant/v1alpha1/subscriptions"
+
+        try:
+            # Paginate through all matching subscriptions
+            offset = 0
+            limit = 100
+            found_any = False
+
+            while True:
+                resp = requests.get(
+                    endpoint,
+                    headers=headers,
+                    params={
+                        "subscription_key_pattern": pattern,
+                        "limit": limit,
+                        "offset": offset
+                    },
+                    timeout=30
+                )
+
+                if resp.status_code != 200:
+                    error_msg = f"HTTP {resp.status_code}"
+                    try:
+                        err = resp.json()
+                        raw_msg = err.get("message", err.get("detail", str(err)))
+                        error_msg = str(raw_msg) if isinstance(raw_msg, (dict, list)) else raw_msg
+                    except Exception:
+                        error_msg = resp.text[:200] or error_msg
+
+                    results["failed"] += 1
+                    results["details"].append({"key": pattern, "success": False, "error": error_msg})
+                    break
+
+                data = resp.json()
+                subscriptions = data.get("subscriptions", [])
+
+                if not subscriptions:
+                    if not found_any:
+                        results["failed"] += 1
+                        results["details"].append({"key": pattern, "success": False, "error": "No subscriptions found"})
+                    break
+
+                found_any = True
+                for sub in subscriptions:
+                    appts = sub.get("appointments", {})
+
+                    def _epoch_to_date(ms):
+                        if not ms:
+                            return None
+                        try:
+                            import datetime
+                            return datetime.datetime.utcfromtimestamp(ms / 1000).strftime("%Y-%m-%d")
+                        except Exception:
+                            return str(ms)
+
+                    start_date = _epoch_to_date(appts.get("subscription_start"))
+                    end_date   = _epoch_to_date(appts.get("subscription_end"))
+                    act_date   = _epoch_to_date(appts.get("activation_date"))
+
+                    sub_key      = sub.get("subscription_key", pattern)
+                    workspace    = sub.get("platform_customer_id", "")
+                    tier         = sub.get("license_tier", sub.get("subscription_tier", ""))
+                    sub_type     = sub.get("subscription_type", "")
+                    sku          = sub.get("product_sku", "")
+                    desc         = sub.get("product_description", "")
+                    qty          = sub.get("quantity", "")
+                    avail_qty    = sub.get("available_quantity", "")
+                    key_type     = sub.get("subscription_key_type", "")
+                    eval_type    = sub.get("evaluation_type", "")
+                    end_user     = sub.get("end_user_name", "")
+                    device_types = ", ".join(sub.get("supported_device_types", []))
+                    tier_desc    = sub.get("subscription_tier_description", "")
+
+                    # New fields
+                    quote        = sub.get("quote", "") or ""
+                    po           = sub.get("po", "") or ""
+                    reseller_po  = sub.get("reseller_po", "") or ""
+                    license_state = sub.get("license_state_type", "") or ""
+                    resource_id  = sub.get("resource_id", sub.get("subscription_resource_id", "")) or ""
+                    product_type = sub.get("product_type", "") or ""
+                    contract     = sub.get("contract", "") or ""
+                    aas_type     = sub.get("aas_type", "") or ""
+                    managed_by   = sub.get("managed_by", "") or ""
+                    customer_name = sub.get("customer_name", "") or ""
+                    assigned_date = _epoch_to_date(sub.get("platform_customer_assigned_date"))
+                    suspension_date    = _epoch_to_date(appts.get("suspension_date"))
+                    cancellation_date  = _epoch_to_date(appts.get("cancellation_date"))
+                    # Flatten parties list → "id(function)" pairs
+                    parties_str  = "; ".join(
+                        f"{p.get('id','')}({p.get('function','')})"
+                        for p in (sub.get("parties") or [])
+                    )
+
+                    detail_str = (
+                        f"Key: {sub_key} | Type: {sub_type} | Tier: {tier} | "
+                        f"SKU: {sku} | Qty: {qty} ({avail_qty} avail) | "
+                        f"Quote: {quote} | PO: {po} | "
+                        f"WS: {workspace} | Start: {start_date} | End: {end_date}"
+                    )
+
+                    results["details"].append({
+                        "key": pattern,
+                        "success": True,
+                        "status": "Found",
+                        "detail": detail_str,
+                        "raw": {
+                            "subscription_key":              sub_key,
+                            "key_type":                      key_type,
+                            "subscription_type":             sub_type,
+                            "license_tier":                  tier,
+                            "subscription_tier":             sub.get("subscription_tier", ""),
+                            "subscription_tier_desc":        tier_desc,
+                            "license_state_type":            license_state,
+                            "product_sku":                   sku,
+                            "product_description":           desc,
+                            "product_type":                  product_type,
+                            "platform_customer_id":          workspace,
+                            "platform_customer_assigned_date": assigned_date,
+                            "end_user_name":                 end_user,
+                            "customer_name":                 customer_name,
+                            "quote":                         quote,
+                            "po":                            po,
+                            "reseller_po":                   reseller_po,
+                            "contract":                      contract,
+                            "evaluation_type":               eval_type,
+                            "aas_type":                      aas_type,
+                            "managed_by":                    managed_by,
+                            "resource_id":                   resource_id,
+                            "quantity":                      qty,
+                            "available_quantity":            avail_qty,
+                            "supported_device_types":        device_types,
+                            "subscription_start":            start_date,
+                            "subscription_end":              end_date,
+                            "activation_date":               act_date,
+                            "suspension_date":               suspension_date,
+                            "cancellation_date":             cancellation_date,
+                            "parties":                       parties_str,
+                        }
+                    })
+
+                results["successful"] += 1
+
+                # If fewer results than limit, we've reached the last page
+                if len(subscriptions) < limit:
+                    break
+                offset += limit
+
+        except Exception as e:
+            results["failed"] += 1
+            results["details"].append({"key": pattern, "success": False, "error": str(e)})
+
+        time.sleep(0.2)
+
+    results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+    # ── Audit log ──────────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        _qi = ", ".join(str(x) for x in (key_patterns or [])[:10]) if isinstance((key_patterns or []), list) else str(key_patterns or "")
+        log_operation(
+            user=_au, operation="Query Subscriptions",
+            endpoint="/api/ccs/query-subscriptions",
+            dry_run=bool(locals().get('dry_run', False)),
+            input_rows=len(key_patterns),
+            query_input=_qi[:500] if _qi else None,
+            workspace=str(None) if None else None,
+            base_url=str(locals().get('base_url', '')),
+            total=results.get('total') if isinstance(results, dict) else None,
+            success=results.get('successful') if isinstance(results, dict) else None,
+            failed=results.get('failed') if isinstance(results, dict) else None,
+            elapsed_sec=float(results.get('elapsed_seconds')) if results.get('elapsed_seconds') is not None else None,
+            status='ok',
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+    
+    return JSONResponse(content=results)
+
+
 
 @router.post("/delete-users")
 async def ccs_delete_users(
@@ -1911,7 +2620,9 @@ async def ccs_delete_users(
     workspace_id: str = Form(""),
     dry_run: bool = Form(False),
     file: UploadFile = File(...),
-    skip_file: UploadFile = File(None)
+    skip_file: UploadFile = File(None),
+    email_col: str = Form(None),
+    skip_ws_col: str = Form(None)
 ):
     """
     Bulk delete (disassociate) users from a workspace via a CSV file.
@@ -1921,7 +2632,8 @@ async def ccs_delete_users(
     content = await file.read()
     usernames = parse_csv_column(
         content,
-        ["Email", "email", "Search String", "search_string", "Search", "User", "Username", "username"]
+        ["Email", "email", "Search String", "search_string", "Search", "User", "Username", "username"],
+        explicit_col=email_col
     )
 
     if not usernames:
@@ -1940,7 +2652,8 @@ async def ccs_delete_users(
         if skip_content:
             skip_list = parse_csv_column(
                 skip_content,
-                ["Workspace ID", "Workspace", "customer_id", "Customer ID", "Search String", "Search", "ID", "id"]
+                ["Workspace ID", "Workspace", "customer_id", "Customer ID", "Search String", "Search", "ID", "id"],
+                explicit_col=skip_ws_col
             )
             skip_workspaces = {wid.strip().lower().replace("-", "") for wid in skip_list if wid.strip()}
 
@@ -2026,9 +2739,164 @@ async def ccs_delete_users(
             await asyncio.sleep(0.3)
 
         results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+        # ── Audit log ──────────────────────────────────────────────
+        try:
+            _au = _get_session_user(request)
+            _qi = ", ".join(str(x) for x in (usernames or [])[:10]) if isinstance((usernames or []), list) else str(usernames or "")
+            
+            rb_users = []
+            for d in results["details"]:
+                if d.get("success") and "Skipped" not in d.get("status", "") and "Would" not in d.get("status", ""):
+                    wid_str = d.get("detail", "").split()[-1].strip("()")
+                    if wid_str:
+                        rb_users.append({"username": d["key"], "workspace_id": wid_str})
+            
+            rollback_payload = {"action": "invite_user", "users": rb_users} if not dry_run and rb_users else None
+
+            log_operation(
+                user=_au, operation="Delete Users",
+                endpoint="/api/ccs/delete-users",
+                dry_run=bool(dry_run),
+                input_rows=len(usernames),
+                query_input=_qi[:500] if _qi else None,
+                workspace=str(workspace_id) if workspace_id else None,
+                base_url=str(base_url),
+                total=results.get('total'),
+                success=results.get('successful'),
+                failed=results.get('failed'),
+                elapsed_sec=float(results.get('elapsed_seconds')),
+                status='ok',
+                rollback_data=json.dumps(rollback_payload) if rollback_payload else None
+            )
+        except Exception as _ae:
+            print(f'Audit log error: {_ae}')
+
         yield json.dumps({"type": "complete", "results": results, "dry_run": dry_run}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+
+# ============================================================
+# ROLLBACK ENDPOINT
+# ============================================================
+
+from app.audit.logger import get_log_by_id
+
+@router.post("/rollback/{audit_id}")
+async def ccs_rollback_operation(
+    audit_id: int,
+    request: Request,
+    bearer_token: str = Form(...),
+    cookie: str = Form(""),
+    base_url: str = Form(API_BASE)
+):
+    """
+    Reverse a destructive operation (like unclaim devices or delete users).
+    Reads the rollback_data from the audit log and executes the inverse API call.
+    """
+    log_entry = get_log_by_id(audit_id)
+    if not log_entry:
+        raise HTTPException(status_code=404, detail="Audit log not found")
+        
+    rb_data_str = log_entry.get("rollback_data")
+    if not rb_data_str:
+        raise HTTPException(status_code=400, detail="No rollback data available for this operation")
+        
+    try:
+        payload = json.loads(rb_data_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Rollback data is corrupted")
+        
+    action = payload.get("action")
+    results = {"total": 0, "successful": 0, "failed": 0, "details": []}
+    
+    headers = make_headers(bearer_token, cookie, base_url=base_url)
+    
+    if action == "claim":
+        # We need to claim the devices back to the original workspace
+        serials = payload.get("serials", [])
+        workspace_id = payload.get("workspace_id")
+        results["total"] = len(serials)
+        
+        endpoint = f"{base_url}/support-assistant/v1alpha1/devices-to-customer"
+        use_aquila = is_aquila_url(base_url)
+        
+        if use_aquila:
+            batch_payload = {"platform_customer_id": workspace_id}
+            for i in range(0, len(serials), 250):
+                batch = serials[i:i+250]
+                _transfer_batch_with_retry(headers, endpoint, batch_payload, batch, results)
+                time.sleep(1.0)
+        else:
+            for serial in serials:
+                device_id = get_device_id_by_serial(bearer_token, cookie, serial, base_url)
+                if not device_id:
+                    results["failed"] += 1
+                    results["details"].append({"serial": serial, "success": False, "error": "Device not found"})
+                    continue
+                try:
+                    patch_url = f"{base_url}/devices/v1beta1/devices"
+                    patch_headers = make_headers(bearer_token, cookie, "application/merge-patch+json", base_url)
+                    resp = requests.patch(
+                        patch_url, headers=patch_headers, params={"id": device_id}, 
+                        json={"workspace": {"id": workspace_id}}, timeout=30
+                    )
+                    if resp.status_code in [200, 202]:
+                        results["successful"] += 1
+                        results["details"].append({"serial": serial, "success": True, "status": "Claimed"})
+                    else:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": f"HTTP {resp.status_code}"})
+                except Exception as e:
+                    results["failed"] += 1
+                    results["details"].append({"serial": serial, "success": False, "error": str(e)})
+
+    elif action == "invite_user":
+        # We need to re-invite the deleted users to their original workspaces
+        users = payload.get("users", [])
+        results["total"] = len(users)
+        
+        for u in users:
+            username = u.get("username")
+            wid = u.get("workspace_id")
+            endpoint = f"{base_url}/support-assistant/v1alpha1/user"
+            
+            try:
+                # Add user role Operator as default for re-invited users to be safe
+                add_payload = {"username": username, "customer_id": wid, "role": "operator"}
+                resp = requests.post(endpoint, headers=headers, json=add_payload, timeout=30)
+                if resp.status_code in [200, 201]:
+                    results["successful"] += 1
+                    results["details"].append({"serial": username, "success": True, "status": f"Re-added to {wid}"})
+                else:
+                    err = resp.json().get("message", f"HTTP {resp.status_code}")
+                    results["failed"] += 1
+                    results["details"].append({"serial": username, "success": False, "error": err})
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({"serial": username, "success": False, "error": str(e)})
+            time.sleep(0.3)
+            
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown rollback action: {action}")
+
+    # Audit the rollback itself
+    try:
+        _au = _get_session_user(request)
+        log_operation(
+            user=_au, operation=f"Rollback {log_entry['operation']}",
+            endpoint=f"/api/ccs/rollback/{audit_id}",
+            dry_run=False,
+            input_rows=results["total"],
+            workspace=None,
+            total=results.get('total'), success=results.get('successful'),
+            failed=results.get('failed'), status='ok'
+        )
+    except Exception:
+        pass
+
+    return JSONResponse(content=results)
 
 
 # ============================================================
@@ -2187,11 +3055,14 @@ def _extract_app_ids(provision: dict) -> list:
 
 @router.post("/audit-customer-apps")
 async def ccs_audit_customer_apps(
+    request: Request = None,
     bearer_token: str = Form(...),
     cookie: str = Form(""),
     base_url: str = Form(API_BASE),
     file: UploadFile = File(...),      # CSV of search strings (customer name / email / ID)
-    ref_file: UploadFile = File(...)   # CSV of reference app_ids to compare against
+    ref_file: UploadFile = File(...),   # CSV of reference app_ids to compare against
+    search_col: str = Form(None),
+    ref_app_col: str = Form(None)
 ):
     """
     For each customer search string:
@@ -2213,7 +3084,8 @@ async def ccs_audit_customer_apps(
     search_strings = parse_csv_column(
         content,
         ["Search String", "search_string", "Customer", "customer", "Email", "email",
-         "ID", "id", "Company", "company", "Name", "name"]
+         "ID", "id", "Company", "company", "Name", "name"],
+        explicit_col=search_col
     )
     if not search_strings:
         raise HTTPException(status_code=400, detail="No search strings found in CSV (expected a column: Search String, Customer, Email, or ID)")
@@ -2223,7 +3095,8 @@ async def ccs_audit_customer_apps(
     ref_app_ids_raw = parse_csv_column(
         ref_content,
         ["App ID", "app_id", "Application ID", "application_id",
-         "AppID", "Service ID", "service_id", "ID", "id"]
+         "AppID", "Service ID", "service_id", "ID", "id"],
+        explicit_col=ref_app_col
     )
     # Normalise to a set (lower-case, stripped) for fast lookup
     reference_set = {aid.strip().lower() for aid in ref_app_ids_raw if aid.strip()}
@@ -2389,4 +3262,26 @@ async def ccs_audit_customer_apps(
             results["details"].extend(partial_stats["details"])
 
     results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+    # ── Audit log ──────────────────────────────────────────────
+    try:
+        _au = _get_session_user(request)
+        _qi = ", ".join(str(x) for x in (workspace_ids or [])[:10]) if isinstance((workspace_ids or []), list) else str(workspace_ids or "")
+        log_operation(
+            user=_au, operation="Audit Customer Apps",
+            endpoint="/api/ccs/audit-customer-apps",
+            dry_run=bool(locals().get('dry_run', False)),
+            input_rows=len(workspace_ids),
+            query_input=_qi[:500] if _qi else None,
+            workspace=str(None) if None else None,
+            base_url=str(locals().get('base_url', '')),
+            total=results.get('total') if isinstance(results, dict) else None,
+            success=results.get('successful') if isinstance(results, dict) else None,
+            failed=results.get('failed') if isinstance(results, dict) else None,
+            elapsed_sec=float(None) if None is not None else None,
+            status='ok',
+        )
+    except Exception as _ae:
+        print(f'Audit log error: {_ae}')
+    
     return JSONResponse(content=results)
