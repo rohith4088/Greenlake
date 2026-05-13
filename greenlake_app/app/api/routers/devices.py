@@ -2,10 +2,291 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.core.client import get_glp_client
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 import requests
+import io
+import base64
+import json
 
 router = APIRouter()
+
+# ── Analytics Models ──────────────────────────────────────────────────────────
+
+class AnalyticsRequest(BaseModel):
+    devices: List[Dict[str, Any]]
+
+# ── Analytics Helper ──────────────────────────────────────────────────────────
+
+def _fig_to_b64(fig) -> str:
+    """Convert a matplotlib figure to a base64 PNG string."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=130,
+                facecolor=fig.get_facecolor())
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
+
+
+@router.post("/analytics")
+async def device_analytics(payload: AnalyticsRequest):
+    """
+    Accept a list of device objects (as returned by /api/devices/),
+    compute analytics with pandas/matplotlib/seaborn and return:
+      - 4 chart images (base64 PNG)
+      - a structured insights summary
+    """
+    try:
+        import pandas as pd
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import seaborn as sns
+        import numpy as np
+        from datetime import datetime
+
+        devices = payload.devices
+        if not devices:
+            raise HTTPException(status_code=400, detail="No device data provided")
+
+        # ── Build DataFrame ──────────────────────────────────────────────────
+        rows = []
+        for d in devices:
+            sub = d.get("subscription") or {}
+            if isinstance(sub, list):
+                sub = sub[0] if sub else {}
+
+            expires_raw = sub.get("expiresAt") or sub.get("sub_end") or d.get("sub_end")
+            starts_raw  = sub.get("startsAt")  or sub.get("sub_start") or d.get("sub_start")
+
+            expires_dt = None
+            if expires_raw and expires_raw not in ("-", "N/A", ""):
+                try:
+                    expires_dt = pd.to_datetime(str(expires_raw).replace("Z", ""), utc=False)
+                except Exception:
+                    pass
+
+            starts_dt = None
+            if starts_raw and starts_raw not in ("-", "N/A", ""):
+                try:
+                    starts_dt = pd.to_datetime(str(starts_raw).replace("Z", ""), utc=False)
+                except Exception:
+                    pass
+
+            cal_status = (sub.get("calculatedStatus") or d.get("sub_status") or "Unknown")
+            if not cal_status or cal_status in ("-", ""):
+                cal_status = "No Sub"
+
+            rows.append({
+                "serial":     d.get("serialNumber", "N/A"),
+                "model":      d.get("model", "Unknown"),
+                "status":     d.get("status", "Unknown"),
+                "sub_status": cal_status,
+                "sub_tier":   sub.get("tier") or d.get("sub_tier") or "N/A",
+                "expires_dt": expires_dt,
+                "starts_dt":  starts_dt,
+                "app":        (d.get("application") or {}).get("name", "Unassigned") if isinstance(d.get("application"), dict) else ("Assigned" if d.get("application") else "Unassigned"),
+            })
+
+        df = pd.DataFrame(rows)
+        now = datetime.utcnow()
+        total = len(df)
+
+        # ── Shared Dark Theme ────────────────────────────────────────────────
+        BG     = "#0f1117"
+        CARD   = "#1a1d2e"
+        ACCENT = "#4cd137"
+        PALETTE = ["#4cd137", "#e74c3c", "#f1c40f", "#3498db", "#9b59b6",
+                   "#e67e22", "#1abc9c", "#e91e63"]
+
+        plt.rcParams.update({
+            "figure.facecolor":  BG,
+            "axes.facecolor":    CARD,
+            "axes.edgecolor":    "#2a2d3e",
+            "axes.labelcolor":   "#c0c4d8",
+            "xtick.color":       "#7f8598",
+            "ytick.color":       "#7f8598",
+            "text.color":        "#e0e3f0",
+            "grid.color":        "#2a2d3e",
+            "grid.linestyle":    "--",
+            "grid.alpha":        0.5,
+            "font.family":       "DejaVu Sans",
+            "font.size":         9,
+        })
+
+        charts = {}
+
+        # ── Chart 1: Subscription Status Donut ──────────────────────────────
+        status_counts = df["sub_status"].value_counts()
+        colors_map = {"Active": "#4cd137", "Expired": "#e74c3c",
+                      "No Sub": "#f1c40f", "Unknown": "#7f8598"}
+        colors1 = [colors_map.get(s, "#3498db") for s in status_counts.index]
+
+        fig1, ax1 = plt.subplots(figsize=(5, 4.5), facecolor=BG)
+        wedges, texts, autotexts = ax1.pie(
+            status_counts.values,
+            labels=None,
+            autopct="%1.1f%%",
+            colors=colors1,
+            startangle=140,
+            pctdistance=0.75,
+            wedgeprops={"linewidth": 2, "edgecolor": BG, "width": 0.55},
+        )
+        for at in autotexts:
+            at.set_fontsize(8)
+            at.set_color("#e0e3f0")
+        legend1 = ax1.legend(
+            handles=[mpatches.Patch(color=c, label=l)
+                     for c, l in zip(colors1, status_counts.index)],
+            loc="lower center", bbox_to_anchor=(0.5, -0.12),
+            ncol=len(status_counts), frameon=False,
+            prop={"size": 8}
+        )
+        for text in legend1.get_texts():
+            text.set_color("#c0c4d8")
+        ax1.set_title("Subscription Status", color="#e0e3f0", fontsize=11,
+                      fontweight="bold", pad=10)
+        ax1.text(0, 0, str(total), ha="center", va="center",
+                 fontsize=20, fontweight="bold", color="#e0e3f0")
+        ax1.text(0, -0.18, "devices", ha="center", va="center",
+                 fontsize=8, color="#7f8598")
+        fig1.tight_layout()
+        charts["subscription_status"] = _fig_to_b64(fig1)
+        plt.close(fig1)
+
+        # ── Chart 2: Device Model Distribution ──────────────────────────────
+        model_counts = df["model"].value_counts().head(10)
+        fig2, ax2 = plt.subplots(figsize=(6, 4.5), facecolor=BG)
+        bar_colors = [PALETTE[i % len(PALETTE)] for i in range(len(model_counts))]
+        bars = ax2.barh(model_counts.index[::-1], model_counts.values[::-1],
+                        color=bar_colors[::-1], height=0.6)
+        for bar, val in zip(bars, model_counts.values[::-1]):
+            ax2.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height() / 2,
+                     str(val), va="center", ha="left", fontsize=8,
+                     color="#c0c4d8")
+        ax2.set_xlabel("Count", color="#c0c4d8")
+        ax2.set_title("Device Models (Top 10)", color="#e0e3f0",
+                      fontsize=11, fontweight="bold")
+        ax2.grid(axis="x")
+        ax2.tick_params(axis="y", labelsize=8)
+        fig2.tight_layout()
+        charts["model_distribution"] = _fig_to_b64(fig2)
+        plt.close(fig2)
+
+        # ── Chart 3: Subscription Tier Breakdown ─────────────────────────────
+        tier_counts = df["sub_tier"].value_counts()
+        valid_tiers = tier_counts[tier_counts.index != "N/A"]
+        if valid_tiers.empty:
+            valid_tiers = tier_counts  # show all if all N/A
+
+        fig3, ax3 = plt.subplots(figsize=(5, 4.5), facecolor=BG)
+        tier_colors = [PALETTE[i % len(PALETTE)] for i in range(len(valid_tiers))]
+        wedges3, texts3, auto3 = ax3.pie(
+            valid_tiers.values,
+            labels=None,
+            autopct="%1.1f%%",
+            colors=tier_colors,
+            startangle=90,
+            pctdistance=0.78,
+            wedgeprops={"linewidth": 2, "edgecolor": BG, "width": 0.5},
+        )
+        for at in auto3:
+            at.set_fontsize(8)
+            at.set_color("#e0e3f0")
+        legend3 = ax3.legend(
+            handles=[mpatches.Patch(color=c, label=l)
+                     for c, l in zip(tier_colors, valid_tiers.index)],
+            loc="lower center", bbox_to_anchor=(0.5, -0.14),
+            ncol=min(3, len(valid_tiers)), frameon=False,
+            prop={"size": 8}
+        )
+        for text in legend3.get_texts():
+            text.set_color("#c0c4d8")
+        ax3.set_title("Subscription Tiers", color="#e0e3f0",
+                      fontsize=11, fontweight="bold", pad=10)
+        fig3.tight_layout()
+        charts["tier_breakdown"] = _fig_to_b64(fig3)
+        plt.close(fig3)
+
+        # ── Chart 4: Expiry Timeline ─────────────────────────────────────────
+        exp_df = df.dropna(subset=["expires_dt"]).copy()
+        fig4, ax4 = plt.subplots(figsize=(6, 4.5), facecolor=BG)
+
+        if not exp_df.empty:
+            exp_df["month"] = exp_df["expires_dt"].dt.to_period("M")
+            monthly = exp_df.groupby("month").size().sort_index()
+            x_labels = [str(p) for p in monthly.index]
+            x_pos = np.arange(len(x_labels))
+
+            future_mask = [pd.Period(p) >= pd.Period(now.strftime("%Y-%m"), freq="M")
+                           for p in monthly.index]
+            bar_c = [ACCENT if f else "#e74c3c" for f in future_mask]
+            ax4.bar(x_pos, monthly.values, color=bar_c, width=0.7)
+            ax4.set_xticks(x_pos)
+            ax4.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=7)
+            ax4.set_ylabel("Devices", color="#c0c4d8")
+            ax4.grid(axis="y")
+            # legend
+            past_patch   = mpatches.Patch(color="#e74c3c", label="Expired")
+            future_patch = mpatches.Patch(color=ACCENT,    label="Active/Future")
+            legend4 = ax4.legend(handles=[past_patch, future_patch], frameon=False,
+                       prop={"size": 8})
+            for text in legend4.get_texts():
+                text.set_color("#c0c4d8")
+        else:
+            ax4.text(0.5, 0.5, "No subscription\nexpiry data available",
+                     ha="center", va="center", transform=ax4.transAxes,
+                     fontsize=12, color="#7f8598")
+
+        ax4.set_title("Subscription Expiry Timeline", color="#e0e3f0",
+                      fontsize=11, fontweight="bold")
+        fig4.tight_layout()
+        charts["expiry_timeline"] = _fig_to_b64(fig4)
+        plt.close(fig4)
+
+        # ── Compute AI Insights ──────────────────────────────────────────────
+        active_count  = (df["sub_status"] == "Active").sum()
+        expired_count = (df["sub_status"] == "Expired").sum()
+        nosub_count   = (df["sub_status"] == "No Sub").sum()
+        unassigned    = (df["app"] == "Unassigned").sum()
+        top_model     = df["model"].mode()[0] if not df["model"].mode().empty else "N/A"
+
+        expiring_soon = 0
+        if not exp_df.empty:
+            cutoff = pd.Timestamp(now) + pd.Timedelta(days=30)
+            expiring_soon = int(
+                ((exp_df["expires_dt"] >= pd.Timestamp(now)) &
+                 (exp_df["expires_dt"] <= cutoff)).sum()
+            )
+
+        health_score = round((active_count / total) * 100, 1) if total else 0
+
+        insights = {
+            "total_devices":   total,
+            "active_subs":     int(active_count),
+            "expired_subs":    int(expired_count),
+            "no_sub":          int(nosub_count),
+            "unassigned":      int(unassigned),
+            "expiring_30d":    expiring_soon,
+            "top_model":       top_model,
+            "health_score":    health_score,
+            "top_tier":        (valid_tiers.index[0]
+                                if not valid_tiers.empty else "N/A"),
+            "unique_models":   int(df["model"].nunique()),
+        }
+
+        return {"charts": charts, "insights": insights}
+
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Analytics libraries not installed: {e}. "
+                   f"Run: pip install pandas matplotlib seaborn numpy"
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analytics error: {e}")
+
 
 class DeviceAction(BaseModel):
     devices: List[str] # List of device IDs or Serials

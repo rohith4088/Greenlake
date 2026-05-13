@@ -227,8 +227,13 @@
     }
 
     @keyframes fadeInOverlay {
-        from { opacity: 0; }
-        to   { opacity: 1; }
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
     }
 
     .csv-modal-box {
@@ -241,13 +246,20 @@
         display: flex;
         flex-direction: column;
         gap: 16px;
-        box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
         animation: slideUp 0.18s ease;
     }
 
     @keyframes slideUp {
-        from { transform: translateY(24px); opacity: 0; }
-        to   { transform: translateY(0);    opacity: 1; }
+        from {
+            transform: translateY(24px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
     }
 
     .csv-modal-header {
@@ -267,14 +279,14 @@
     .csv-modal-subtitle {
         margin: 0;
         font-size: 0.8rem;
-        color: rgba(255,255,255,0.45);
+        color: rgba(255, 255, 255, 0.45);
     }
 
     .csv-modal-close {
-        background: rgba(255,255,255,0.07);
-        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 6px;
-        color: rgba(255,255,255,0.6);
+        color: rgba(255, 255, 255, 0.6);
         font-size: 0.9rem;
         cursor: pointer;
         padding: 4px 9px;
@@ -283,13 +295,15 @@
         transition: background 0.15s;
     }
 
-    .csv-modal-close:hover { background: rgba(255,255,255,0.14); }
+    .csv-modal-close:hover {
+        background: rgba(255, 255, 255, 0.14);
+    }
 
     .csv-preview-table-wrap {
         overflow: auto;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 8px;
-        background: rgba(0,0,0,0.25);
+        background: rgba(0, 0, 0, 0.25);
         flex: 1;
     }
 
@@ -297,35 +311,36 @@
         width: 100%;
         border-collapse: collapse;
         font-size: 0.8rem;
-        color: rgba(255,255,255,0.85);
+        color: rgba(255, 255, 255, 0.85);
     }
 
     .csv-preview-table thead tr {
-        background: rgba(255,255,255,0.06);
-        border-bottom: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255, 255, 255, 0.06);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    .csv-preview-table th, .csv-preview-table td {
+    .csv-preview-table th,
+    .csv-preview-table td {
         padding: 8px 12px;
         text-align: left;
         white-space: nowrap;
-        border-right: 1px solid rgba(255,255,255,0.05);
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     .csv-preview-table th {
         font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: rgba(255,255,255,0.45);
+        color: rgba(255, 255, 255, 0.45);
         font-weight: 600;
     }
 
     .csv-preview-table tbody tr:nth-child(even) {
-        background: rgba(255,255,255,0.025);
+        background: rgba(255, 255, 255, 0.025);
     }
 
     .csv-preview-table tbody tr:hover {
-        background: rgba(76,209,55,0.06);
+        background: rgba(76, 209, 55, 0.06);
     }
 
     .csv-modal-footer {
@@ -338,7 +353,7 @@
 
     .csv-row-count {
         font-size: 0.8rem;
-        color: rgba(255,255,255,0.45);
+        color: rgba(255, 255, 255, 0.45);
     }
 
     .csv-row-count strong {
@@ -351,10 +366,10 @@
     }
 
     .csv-modal-actions .btn-cancel {
-        background: rgba(255,255,255,0.07);
-        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 8px;
-        color: rgba(255,255,255,0.8);
+        color: rgba(255, 255, 255, 0.8);
         font-weight: 600;
         font-size: 0.875rem;
         padding: 9px 22px;
@@ -362,7 +377,9 @@
         transition: background 0.15s;
     }
 
-    .csv-modal-actions .btn-cancel:hover { background: rgba(255,255,255,0.13); }
+    .csv-modal-actions .btn-cancel:hover {
+        background: rgba(255, 255, 255, 0.13);
+    }
 
     .csv-modal-actions .btn-confirm {
         background: linear-gradient(135deg, #4cd137, #00b894);
@@ -376,7 +393,9 @@
         transition: opacity 0.15s;
     }
 
-    .csv-modal-actions .btn-confirm:hover { opacity: 0.88; }
+    .csv-modal-actions .btn-confirm:hover {
+        opacity: 0.88;
+    }
 
     /* ── Dry-Run Toggle ────────────────────────────────────────── */
     .dry-run-row {
@@ -394,17 +413,19 @@
         cursor: pointer;
         user-select: none;
         font-size: 0.8rem;
-        color: rgba(255,255,255,0.65);
+        color: rgba(255, 255, 255, 0.65);
     }
 
-    .dry-run-checkbox { display: none; }
+    .dry-run-checkbox {
+        display: none;
+    }
 
     .toggle-track {
         position: relative;
         width: 34px;
         height: 18px;
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.2);
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 18px;
         transition: background 0.2s, border-color 0.2s;
         flex-shrink: 0;
@@ -413,19 +434,21 @@
     .toggle-track::after {
         content: '';
         position: absolute;
-        top: 2px; left: 2px;
-        width: 12px; height: 12px;
-        background: rgba(255,255,255,0.4);
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        background: rgba(255, 255, 255, 0.4);
         border-radius: 50%;
         transition: transform 0.2s, background 0.2s;
     }
 
-    .dry-run-checkbox:checked + .toggle-track {
+    .dry-run-checkbox:checked+.toggle-track {
         background: rgba(0, 168, 255, 0.35);
         border-color: rgba(0, 168, 255, 0.6);
     }
 
-    .dry-run-checkbox:checked + .toggle-track::after {
+    .dry-run-checkbox:checked+.toggle-track::after {
         transform: translateX(16px);
         background: #00a8ff;
     }
@@ -453,8 +476,14 @@
         text-align: center;
     }
 
-    .btn-snapshot:hover { background: rgba(253, 121, 168, 0.16); }
-    .btn-snapshot:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-snapshot:hover {
+        background: rgba(253, 121, 168, 0.16);
+    }
+
+    .btn-snapshot:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
 
     /* ── Dry-Run Results Banner ───────────────────────────────── */
     .dry-run-banner {
@@ -661,8 +690,8 @@
         display: flex;
         gap: 6px;
         margin-bottom: 20px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 12px;
         padding: 5px;
         width: fit-content;
@@ -676,21 +705,25 @@
         cursor: pointer;
         border: none;
         background: transparent;
-        color: rgba(255,255,255,0.45);
+        color: rgba(255, 255, 255, 0.45);
         letter-spacing: 0.03em;
         transition: background 0.18s, color 0.18s;
     }
 
-    .op-tab:hover { color: rgba(255,255,255,0.75); }
+    .op-tab:hover {
+        color: rgba(255, 255, 255, 0.75);
+    }
 
     .op-tab.active-all {
-        background: rgba(255,255,255,0.1);
+        background: rgba(255, 255, 255, 0.1);
         color: #fff;
     }
+
     .op-tab.active-get {
         background: rgba(0, 168, 255, 0.18);
         color: #00a8ff;
     }
+
     .op-tab.active-post {
         background: rgba(232, 65, 24, 0.18);
         color: #e84118;
@@ -709,11 +742,13 @@
         margin-left: auto;
         flex-shrink: 0;
     }
+
     .method-badge.get {
         background: rgba(0, 168, 255, 0.15);
         border: 1px solid rgba(0, 168, 255, 0.35);
         color: #00a8ff;
     }
+
     .method-badge.post {
         background: rgba(232, 65, 24, 0.12);
         border: 1px solid rgba(232, 65, 24, 0.3);
@@ -724,13 +759,16 @@
     .op-card[data-op-type="post"] {
         border-left: 3px solid rgba(232, 65, 24, 0.35);
     }
+
     .op-card[data-op-type="get"] {
         border-left: 3px solid rgba(0, 168, 255, 0.35);
     }
+
     .op-card[data-op-type="post"]:hover {
         border-color: rgba(232, 65, 24, 0.45);
         border-left-color: rgba(232, 65, 24, 0.6);
     }
+
     .op-card[data-op-type="get"]:hover {
         border-color: rgba(0, 168, 255, 0.45);
         border-left-color: rgba(0, 168, 255, 0.6);
@@ -768,10 +806,12 @@
                 <label style="display:flex; justify-content: space-between; align-items: center;">
                     Cookie
                     <span style="font-size:0.7rem; color:rgba(0,168,255,0.8); font-weight:400;">
-                        ⓘ DevTools → Network → any request to aquila-user-api → copy <code style="font-size:0.7rem">Cookie:</code> request header
+                        ⓘ DevTools → Network → any request to aquila-user-api → copy <code
+                            style="font-size:0.7rem">Cookie:</code> request header
                     </span>
                 </label>
-                <textarea id="cookieStr" rows="2" placeholder="Must include ccs-csrftoken, ccs-session, ccs-pf-id — copy from DevTools Network tab (see tip above)"></textarea>
+                <textarea id="cookieStr" rows="2"
+                    placeholder="Must include ccs-csrftoken, ccs-session, ccs-pf-id — copy from DevTools Network tab (see tip above)"></textarea>
             </div>
             <div class="form-group">
                 <label>Base URL</label>
@@ -790,8 +830,11 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px;">
             <!-- HAR File Drop -->
-            <div class="file-drop" id="harFileDrop" onclick="document.getElementById('harFile').click()" style="margin:0; padding:16px; border-color:rgba(155, 89, 182, 0.3); background:rgba(155, 89, 182, 0.05); text-align:center;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(155, 89, 182, 0.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 6px;">
+            <div class="file-drop" id="harFileDrop" onclick="document.getElementById('harFile').click()"
+                style="margin:0; padding:16px; border-color:rgba(155, 89, 182, 0.3); background:rgba(155, 89, 182, 0.05); text-align:center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="rgba(155, 89, 182, 0.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    style="margin-bottom: 6px;">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                     <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -799,17 +842,24 @@
                     <polyline points="10 9 9 9 8 9"></polyline>
                 </svg>
                 <h4 style="margin: 0 0 4px; font-size: 0.8rem; color: #fff;">Network HAR File</h4>
-                <p id="harFileLabel" style="margin: 0; font-size: 0.7rem; color:rgba(255,255,255,0.6); line-height: 1.3;">Drop a HAR file from DevTools to auto-extract auth</p>
+                <p id="harFileLabel"
+                    style="margin: 0; font-size: 0.7rem; color:rgba(255,255,255,0.6); line-height: 1.3;">Drop a HAR file
+                    from DevTools to auto-extract auth</p>
                 <input type="file" id="harFile" accept=".har" style="display:none" onchange="parseHarFile(this)">
             </div>
 
             <!-- Magic Bookmarklet -->
-            <div style="padding: 16px; background: rgba(0,0,0,0.15); border: 1px solid rgba(0, 168, 255, 0.2); border-radius: 8px;">
-                <h4 style="margin: 0 0 4px; font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px;">Magic Bookmark</h4>
+            <div
+                style="padding: 16px; background: rgba(0,0,0,0.15); border: 1px solid rgba(0, 168, 255, 0.2); border-radius: 8px;">
+                <h4
+                    style="margin: 0 0 4px; font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px;">
+                    Magic Bookmark</h4>
                 <p style="margin: 0 0 8px; font-size: 0.7rem; color: rgba(255,255,255,0.6); line-height: 1.3;">
                     Drag this button to your bookmarks bar. Click it when in GreenLake to load session!
                 </p>
-                <a id="magicBookmarklet" href="#" class="btn-secondary" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-size: 0.7rem; padding: 4px 10px; background: rgba(0, 168, 255, 0.1); border-color: rgba(0, 168, 255, 0.3); color: #00a8ff;" onclick="event.preventDefault(); alert('Drag this link to your bookmarks bar! Do not click it here.');">
+                <a id="magicBookmarklet" href="#" class="btn-secondary"
+                    style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-size: 0.7rem; padding: 4px 10px; background: rgba(0, 168, 255, 0.1); border-color: rgba(0, 168, 255, 0.3); color: #00a8ff;"
+                    onclick="event.preventDefault(); alert('Drag this link to your bookmarks bar! Do not click it here.');">
                     Send to CCS Manager
                 </a>
             </div>
@@ -866,13 +916,15 @@
                     onchange="handleFileSelect(this, 'devFileLabel')">
             </div>
 
-            <button class="btn-primary" id="devTransferBtn" onclick="previewThenRun('devFile', 'Transfer Devices', transferDevices)">
+            <button class="btn-primary" id="devTransferBtn"
+                onclick="previewThenRun('devFile', 'Transfer Devices', transferDevices)">
                 Transfer Devices
             </button>
             <div class="loading-overlay" id="devLoader" style="justify-content: center;">
                 <div class="spinner"></div> Transferring devices — please wait...
             </div>
-            <button class="btn-snapshot" id="devSnapshotBtn" onclick="snapshotDevices('devFile', 'devSnapshotBtn')"> Snapshot Current State</button>
+            <button class="btn-snapshot" id="devSnapshotBtn" onclick="snapshotDevices('devFile', 'devSnapshotBtn')">
+                Snapshot Current State</button>
             <div class="dry-run-row">
                 <label class="dry-run-label">
                     <input type="checkbox" class="dry-run-checkbox" id="devDryRun">
@@ -907,18 +959,25 @@
                     onchange="handleFileSelect(this, 'devQueryFileLabel')">
             </div>
 
-            <button class="btn-primary" id="devQueryBtn" onclick="previewThenRun('devQueryFile', 'Query Devices', queryDevices)">
+            <button class="btn-primary" id="devQueryBtn"
+                onclick="previewThenRun('devQueryFile', 'Query Devices', queryDevices)">
                 Query Devices
             </button>
-            <div class="loading-overlay" id="devQueryLoader" style="justify-content: center; flex-direction: column; gap: 10px;">
+            <div class="loading-overlay" id="devQueryLoader"
+                style="justify-content: center; flex-direction: column; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div class="spinner"></div> 
-                    <span id="devQueryLoaderText" style="font-size: 0.95rem; font-weight: 500;">Querying devices — please wait...</span>
+                    <div class="spinner"></div>
+                    <span id="devQueryLoaderText" style="font-size: 0.95rem; font-weight: 500;">Querying devices —
+                        please wait...</span>
                 </div>
-                <div style="width: 80%; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; height: 8px;">
-                    <div id="devQueryProgressBar" style="width: 0%; height: 100%; background: #007bff; transition: width 0.2s;"></div>
+                <div
+                    style="width: 80%; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; height: 8px;">
+                    <div id="devQueryProgressBar"
+                        style="width: 0%; height: 100%; background: #007bff; transition: width 0.2s;"></div>
                 </div>
-                <button id="devQueryAbortBtn" class="btn-secondary" style="margin-top: 4px; padding: 4px 12px; font-size: 0.8rem;" onclick="abortQueryDevices()">Abort</button>
+                <button id="devQueryAbortBtn" class="btn-secondary"
+                    style="margin-top: 4px; padding: 4px 12px; font-size: 0.8rem;"
+                    onclick="abortQueryDevices()">Abort</button>
             </div>
         </div>
         <!-- Unclaim Devices  [POST] -->
@@ -933,7 +992,8 @@
                 Unclaim Devices
                 <span class="method-badge post">POST</span>
             </h3>
-            <p>Remove devices from a workspace (return to factory) using serial numbers from a CSV file. (Requires Aquila session)</p>
+            <p>Remove devices from a workspace (return to factory) using serial numbers from a CSV file. (Requires
+                Aquila session)</p>
 
             <div class="workspace-row">
                 <div class="form-group" style="margin-bottom:0;">
@@ -951,13 +1011,16 @@
                     onchange="handleFileSelect(this, 'unclaimFileLabel')">
             </div>
 
-            <button class="btn-primary" id="unclaimBtn" onclick="previewThenRun('unclaimFile', 'Unclaim Devices', unclaimDevices)" style="background: linear-gradient(135deg, #e84118, #c23616);">
+            <button class="btn-primary" id="unclaimBtn"
+                onclick="previewThenRun('unclaimFile', 'Unclaim Devices', unclaimDevices)"
+                style="background: linear-gradient(135deg, #e84118, #c23616);">
                 Unclaim Devices
             </button>
             <div class="loading-overlay" id="unclaimLoader" style="justify-content: center;">
                 <div class="spinner" style="border-top-color: #e84118;"></div> Unclaiming devices — please wait...
             </div>
-            <button class="btn-snapshot" id="unclaimSnapshotBtn" onclick="snapshotDevices('unclaimFile', 'unclaimSnapshotBtn')"> Snapshot Current State</button>
+            <button class="btn-snapshot" id="unclaimSnapshotBtn"
+                onclick="snapshotDevices('unclaimFile', 'unclaimSnapshotBtn')"> Snapshot Current State</button>
             <div class="dry-run-row">
                 <label class="dry-run-label">
                     <input type="checkbox" class="dry-run-checkbox" id="unclaimDryRun">
@@ -973,14 +1036,17 @@
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                     stroke="#00d2d3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <path
+                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                    </path>
                     <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                     <line x1="12" y1="22.08" x2="12" y2="12"></line>
                 </svg>
                 Claim Devices (From Factory)
                 <span class="method-badge post">POST</span>
             </h3>
-            <p>Move devices from Aruba Factory to a workspace using serial numbers from a CSV file. (Requires Aquila session)</p>
+            <p>Move devices from Aruba Factory to a workspace using serial numbers from a CSV file. (Requires Aquila
+                session)</p>
 
             <div class="workspace-row">
                 <div class="form-group" style="margin-bottom:0;">
@@ -1002,7 +1068,9 @@
                     onchange="handleFileSelect(this, 'claimFileLabel')">
             </div>
 
-            <button class="btn-primary" id="claimBtn" onclick="previewThenRun('claimFile', 'Claim Devices', claimDevices)" style="background: linear-gradient(135deg, #00d2d3, #0abde3);">
+            <button class="btn-primary" id="claimBtn"
+                onclick="previewThenRun('claimFile', 'Claim Devices', claimDevices)"
+                style="background: linear-gradient(135deg, #00d2d3, #0abde3);">
                 Claim Devices
             </button>
             <div class="loading-overlay" id="claimLoader" style="justify-content: center;">
@@ -1019,7 +1087,8 @@
         </div>
 
         <!-- Bulk Move Devices  [POST] -->
-        <div class="op-card" id="bulkMoveCard" data-op-type="post" data-op-category="devices" style="grid-column: 1 / -1; background: linear-gradient(135deg, rgba(108,92,231,0.07), rgba(162,155,254,0.04)); border-color: rgba(108,92,231,0.30);">
+        <div class="op-card" id="bulkMoveCard" data-op-type="post" data-op-category="devices"
+            style="grid-column: 1 / -1; background: linear-gradient(135deg, rgba(108,92,231,0.07), rgba(162,155,254,0.04)); border-color: rgba(108,92,231,0.30);">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                     stroke="#6c5ce7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1029,27 +1098,42 @@
                     <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
                 </svg>
                 Bulk Move Devices
-                <span style="font-size:0.7rem; font-weight:400; color:rgba(108,92,231,0.75); margin-left:6px; background:rgba(108,92,231,0.12); padding:2px 8px; border-radius:10px; border:1px solid rgba(108,92,231,0.25);">per-row workspace</span>
+                <span
+                    style="font-size:0.7rem; font-weight:400; color:rgba(108,92,231,0.75); margin-left:6px; background:rgba(108,92,231,0.12); padding:2px 8px; border-radius:10px; border:1px solid rgba(108,92,231,0.25);">per-row
+                    workspace</span>
             </h3>
-            <p>Upload a CSV with <strong style="color:rgba(255,255,255,0.75);">one destination Workspace ID per row</strong> paired with the device's Serial Number. Each device is moved to its own target workspace — ideal when migrating many devices across multiple accounts at once. (Requires Aquila session)</p>
+            <p>Upload a CSV with <strong style="color:rgba(255,255,255,0.75);">one destination Workspace ID per
+                    row</strong> paired with the device's Serial Number. Each device is moved to its own target
+                workspace — ideal when migrating many devices across multiple accounts at once. (Requires Aquila
+                session)</p>
 
             <!-- CSV Format Info -->
-            <div style="background:rgba(108,92,231,0.07); border:1px solid rgba(108,92,231,0.2); border-radius:8px; padding:12px 16px; margin-bottom:16px; font-size:0.78rem;">
-                <div style="color:rgba(255,255,255,0.55); margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;"> Required CSV Format</div>
+            <div
+                style="background:rgba(108,92,231,0.07); border:1px solid rgba(108,92,231,0.2); border-radius:8px; padding:12px 16px; margin-bottom:16px; font-size:0.78rem;">
+                <div
+                    style="color:rgba(255,255,255,0.55); margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+                    Required CSV Format</div>
                 <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
                     <div>
-                        <div style="color:rgba(255,255,255,0.4); font-size:0.72rem; margin-bottom:4px;">Column A (Destination)</div>
+                        <div style="color:rgba(255,255,255,0.4); font-size:0.72rem; margin-bottom:4px;">Column A
+                            (Destination)</div>
                         <code style="color:#a29bfe; font-size:0.8rem;">Workspace ID</code>
-                        <span style="color:rgba(255,255,255,0.3); font-size:0.7rem; display:block; margin-top:2px;">also: Customer ID, PCID, platform_customer_id</span>
+                        <span
+                            style="color:rgba(255,255,255,0.3); font-size:0.7rem; display:block; margin-top:2px;">also:
+                            Customer ID, PCID, platform_customer_id</span>
                     </div>
                     <div style="color:rgba(255,255,255,0.2); padding-top:14px;">│</div>
                     <div>
-                        <div style="color:rgba(255,255,255,0.4); font-size:0.72rem; margin-bottom:4px;">Column B (Device)</div>
+                        <div style="color:rgba(255,255,255,0.4); font-size:0.72rem; margin-bottom:4px;">Column B
+                            (Device)</div>
                         <code style="color:#a29bfe; font-size:0.8rem;">Serial Number</code>
-                        <span style="color:rgba(255,255,255,0.3); font-size:0.7rem; display:block; margin-top:2px;">also: SerialNumber, Serial, SN</span>
+                        <span
+                            style="color:rgba(255,255,255,0.3); font-size:0.7rem; display:block; margin-top:2px;">also:
+                            SerialNumber, Serial, SN</span>
                     </div>
                     <div style="margin-left:auto; align-self:center;">
-                        <button onclick="downloadBulkMoveTemplate()" class="btn-secondary" style="padding:5px 12px; font-size:0.75rem; background:rgba(108,92,231,0.1); border-color:rgba(108,92,231,0.3); color:#a29bfe;">
+                        <button onclick="downloadBulkMoveTemplate()" class="btn-secondary"
+                            style="padding:5px 12px; font-size:0.75rem; background:rgba(108,92,231,0.1); border-color:rgba(108,92,231,0.3); color:#a29bfe;">
                             Download Template CSV
                         </button>
                     </div>
@@ -1057,7 +1141,8 @@
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 180px; gap:12px; margin-bottom:14px; align-items:end;">
-                <div class="file-drop" id="bulkMoveFileDrop" onclick="document.getElementById('bulkMoveFile').click()" style="margin:0; border-color:rgba(108,92,231,0.35);">
+                <div class="file-drop" id="bulkMoveFileDrop" onclick="document.getElementById('bulkMoveFile').click()"
+                    style="margin:0; border-color:rgba(108,92,231,0.35);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                         stroke="rgba(108,92,231,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                         style="display:block; margin:0 auto 8px;">
@@ -1065,7 +1150,9 @@
                         <line x1="12" y1="12" x2="12" y2="21"></line>
                         <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
                     </svg>
-                    <p id="bulkMoveFileLabel">Click or drag CSV (Workspace ID + Serial Number)<br><span style="font-size:0.68rem; opacity:0.45;">One device per row · multiple workspaces supported</span></p>
+                    <p id="bulkMoveFileLabel">Click or drag CSV (Workspace ID + Serial Number)<br><span
+                            style="font-size:0.68rem; opacity:0.45;">One device per row · multiple workspaces
+                            supported</span></p>
                     <input type="file" id="bulkMoveFile" accept=".csv" style="display:none"
                         onchange="handleBulkMoveFileSelect(this)">
                 </div>
@@ -1076,12 +1163,14 @@
             </div>
 
             <!-- Bulk Move Summary Preview (shown after file select) -->
-            <div id="bulkMoveSummary" style="display:none; margin-bottom:14px; padding:10px 14px; background:rgba(0,0,0,0.2); border:1px solid rgba(108,92,231,0.2); border-radius:8px; font-size:0.78rem;">
+            <div id="bulkMoveSummary"
+                style="display:none; margin-bottom:14px; padding:10px 14px; background:rgba(0,0,0,0.2); border:1px solid rgba(108,92,231,0.2); border-radius:8px; font-size:0.78rem;">
                 <span id="bulkMoveSummaryText" style="color:rgba(255,255,255,0.6);"></span>
             </div>
 
             <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                <button class="btn-primary" id="bulkMoveBtn" onclick="bulkMoveDevices()" style="max-width:260px; background:linear-gradient(135deg,#6c5ce7,#a29bfe);">
+                <button class="btn-primary" id="bulkMoveBtn" onclick="bulkMoveDevices()"
+                    style="max-width:260px; background:linear-gradient(135deg,#6c5ce7,#a29bfe);">
                     Bulk Move Devices
                 </button>
                 <div class="loading-overlay" id="bulkMoveLoader" style="justify-content:center;">
@@ -1110,13 +1199,22 @@
         <div class="results-header">
             <h3 id="resultsTitle">Results</h3>
             <div class="results-stats" style="align-items: center;">
-                <span class="stat-badge total" id="statTime" style="background: rgba(10, 189, 227, 0.1); color: #0abde3; border-color: rgba(10, 189, 227, 0.3); display: none;"></span>
+                <span class="stat-badge total" id="statTime"
+                    style="background: rgba(10, 189, 227, 0.1); color: #0abde3; border-color: rgba(10, 189, 227, 0.3); display: none;"></span>
                 <span class="stat-badge total" id="statTotal">Total: 0</span>
                 <span class="stat-badge success" id="statSuccess">0</span>
                 <span class="stat-badge fail" id="statFail">0</span>
                 <button id="exportCsvBtn" class="btn-secondary"
                     style="margin-left: 8px; padding: 4px 12px; font-size: 0.78rem; display: none;"
                     onclick="exportResultsCsv()">Export CSV</button>
+                <button id="ccsAnalyticsBtn" onclick="runCCSAnalytics()"
+                    style="display:none; margin-left:8px; padding:5px 14px; font-size:0.78rem;
+                           background:linear-gradient(135deg,#6c3de0,#10b981); border:none;
+                           border-radius:8px; color:#fff; font-weight:700; cursor:pointer;
+                           box-shadow:0 3px 14px rgba(16,185,129,0.35); transition:opacity 0.2s;"
+                    onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                    ✦ Analyze
+                </button>
             </div>
         </div>
         <div style="overflow-x: auto;">
@@ -1131,6 +1229,67 @@
                 </thead>
                 <tbody id="resultsBody"></tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- ══ CCS AI Analytics Panel ══════════════════════════════════════════════ -->
+    <div id="ccsAnalyticsPanel" style="display:none; margin-top:28px;">
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:28px;">
+
+            <!-- Panel header -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <h3 style="margin:0; font-size:1.2rem; font-weight:700;
+                               background:linear-gradient(90deg,#8b5cf6,#10b981);
+                               -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">
+                        ⚡ AI Analytics
+                    </h3>
+                    <span style="font-size:0.68rem; font-weight:700; padding:3px 10px; border-radius:20px;
+                                 background:linear-gradient(135deg,#6c3de0,#10b981); color:#fff; letter-spacing:0.5px;">
+                        PANDAS · MATPLOTLIB
+                    </span>
+                </div>
+                <button onclick="document.getElementById('ccsAnalyticsPanel').style.display='none'"
+                        style="background:none; border:none; color:#71717a; font-size:1.2rem; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- Loading spinner -->
+            <div id="ccsAnalyticsLoading" style="display:none; flex-direction:column; align-items:center; gap:14px; padding:36px;">
+                <div style="width:44px;height:44px; border:3px solid rgba(16,185,129,0.15);
+                            border-top-color:#10b981; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+                <span style="color:#71717a; font-size:0.9rem;">Crunching your query results…</span>
+            </div>
+
+            <!-- Rendered results -->
+            <div id="ccsAnalyticsResults" style="display:none;">
+                <!-- Stat cards row -->
+                <div id="ccsStatCards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+                     gap:14px; margin-bottom:24px;"></div>
+
+                <!-- Workspace Breakdown table (always shown prominently) -->
+                <div style="margin-bottom:24px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                        <div style="font-size:0.78rem; font-weight:600; color:#71717a; text-transform:uppercase; letter-spacing:0.8px;">
+                            🏢 Workspace Breakdown
+                        </div>
+                        <input id="wsSearchInput" type="text" placeholder="Search workspace ID…"
+                               oninput="filterWsTable(this.value)"
+                               style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+                                      border-radius:8px; color:#fafafa; padding:5px 12px; font-size:0.8rem;
+                                      outline:none; width:220px; font-family:inherit;">
+                    </div>
+                    <div id="ccsWsTable" style="border:1px solid rgba(255,255,255,0.08); border-radius:10px; overflow:hidden;"></div>
+                </div>
+
+                <!-- 2×2 chart grid -->
+                <div id="ccsChartsGrid" style="display:grid; grid-template-columns:repeat(2,1fr);
+                     gap:20px; margin-bottom:24px;"></div>
+                <!-- Smart Insights -->
+                <div style="font-size:0.78rem; font-weight:600; color:#71717a; text-transform:uppercase;
+                            letter-spacing:0.8px; margin-bottom:12px;">✦ Smart Insights</div>
+                <div id="ccsInsightsGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px;"></div>
+            </div>
+
         </div>
     </div>
 
@@ -1183,8 +1342,8 @@
                 }
                 return pr;
             };
-        })();`.replace(/\n/g,'').replace(/  +/g,' ');
-        
+        })();`.replace(/\n/g, '').replace(/  +/g, ' ');
+
         document.getElementById('magicBookmarklet').href = bmkCode;
 
         // Load Session from URL or Local Storage
@@ -1213,11 +1372,11 @@
             const sB = localStorage.getItem('ccs_manager_bearer');
             const sC = localStorage.getItem('ccs_manager_cookie');
             const sU = localStorage.getItem('ccs_manager_baseUrl');
-            
+
             if (sB) document.getElementById('bearerToken').value = sB;
             if (sC) document.getElementById('cookieStr').value = sC;
             if (sU) document.getElementById('baseUrl').value = sU;
-            
+
             // Automatically Validate if token exists
             if (sB) validateSession();
         }
@@ -1234,21 +1393,21 @@
         localStorage.setItem('ccs_manager_baseUrl', document.getElementById('baseUrl').value.trim());
     }
 
-        // ── Drag-and-drop (this page only) ─────────────────────────────────────
+    // ── Drag-and-drop (this page only) ─────────────────────────────────────
     var _dnd_ids = ['devFileDrop', 'devQueryFileDrop', 'unclaimFileDrop', 'claimFileDrop', 'bulkMoveFileDrop'];
     var _dnd_map = {
-        'devFileDrop': {fi: 'devFile', li: 'devFileLabel'},
-        'devQueryFileDrop': {fi: 'devQueryFile', li: 'devQueryFileLabel'},
-        'unclaimFileDrop': {fi: 'unclaimFile', li: 'unclaimFileLabel'},
-        'claimFileDrop': {fi: 'claimFile', li: 'claimFileLabel'},
-        'bulkMoveFileDrop': {fi: 'bulkMoveFile', li: 'bulkMoveFileLabel'},
+        'devFileDrop': { fi: 'devFile', li: 'devFileLabel' },
+        'devQueryFileDrop': { fi: 'devQueryFile', li: 'devQueryFileLabel' },
+        'unclaimFileDrop': { fi: 'unclaimFile', li: 'unclaimFileLabel' },
+        'claimFileDrop': { fi: 'claimFile', li: 'claimFileLabel' },
+        'bulkMoveFileDrop': { fi: 'bulkMoveFile', li: 'bulkMoveFileLabel' },
     };
-    _dnd_ids.forEach(function(id) {
+    _dnd_ids.forEach(function (id) {
         var drop = document.getElementById(id);
         if (!drop) return;
-        drop.addEventListener('dragover', function(e) { e.preventDefault(); drop.classList.add('drag-over'); });
-        drop.addEventListener('dragleave', function() { drop.classList.remove('drag-over'); });
-        drop.addEventListener('drop', function(e) {
+        drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('drag-over'); });
+        drop.addEventListener('dragleave', function () { drop.classList.remove('drag-over'); });
+        drop.addEventListener('drop', function (e) {
             e.preventDefault();
             drop.classList.remove('drag-over');
             var m = _dnd_map[id];
@@ -1273,7 +1432,7 @@
         reader.onload = (e) => {
             const lines = e.target.result.split(/\r?\n/);
             if (lines.length > 0) {
-                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
                 renderColumnMapper(inputId, headers);
             }
         };
@@ -1291,19 +1450,19 @@
             container.style.background = 'rgba(0,0,0,0.2)';
             container.style.border = '1px solid rgba(255,255,255,0.1)';
             container.style.borderRadius = '8px';
-            
+
             const fileDrop = document.getElementById(inputId).closest('.file-drop');
             fileDrop.parentNode.insertBefore(container, fileDrop.nextSibling);
         }
 
         const isBulkMove = (inputId === 'bulkMoveFile');
         let html = `<div style="font-size:0.8rem; font-weight:600; color:#fff; margin-bottom:8px;">Map CSV Columns</div>`;
-        
+
         html += `<div class="form-group" style="margin-bottom:8px;">
             <label>Serial Number Column</label>
             <select id="map-sn-${inputId}" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
                 <option value="">-- Auto-detect --</option>
-                ${headers.map(h => `<option value="${h}" ${h.toLowerCase().includes('serial')||h.toLowerCase()==='sn'?'selected':''}>${h}</option>`).join('')}
+                ${headers.map(h => `<option value="${h}" ${h.toLowerCase().includes('serial') || h.toLowerCase() === 'sn' ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
         </div>`;
 
@@ -1312,7 +1471,7 @@
                 <label>Destination Workspace ID Column</label>
                 <select id="map-ws-${inputId}" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
                     <option value="">-- Auto-detect --</option>
-                    ${headers.map(h => `<option value="${h}" ${h.toLowerCase().includes('workspace')||h.toLowerCase().includes('customer')||h.toLowerCase().includes('pcid')?'selected':''}>${h}</option>`).join('')}
+                    ${headers.map(h => `<option value="${h}" ${h.toLowerCase().includes('workspace') || h.toLowerCase().includes('customer') || h.toLowerCase().includes('pcid') ? 'selected' : ''}>${h}</option>`).join('')}
                 </select>
             </div>`;
         }
@@ -1400,7 +1559,7 @@
         fd.append('folder', folder);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
-        
+
         const snCol = document.getElementById('map-sn-devFile')?.value;
         if (snCol) fd.append('sn_col', snCol);
 
@@ -1444,7 +1603,7 @@
         const folder = (document.getElementById('bulkMoveFolder')?.value || 'default').trim() || 'default';
 
         if (!bearer) { alert('Please enter a bearer token first.'); return; }
-        if (!file)   { alert('Please select a CSV file.'); return; }
+        if (!file) { alert('Please select a CSV file.'); return; }
 
         setLoader('bulkMoveLoader', true);
         setBtn('bulkMoveBtn', true);
@@ -1457,7 +1616,7 @@
         fd.append('folder', folder);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
-        
+
         const snCol = document.getElementById('map-sn-bulkMoveFile')?.value;
         const wsCol = document.getElementById('map-ws-bulkMoveFile')?.value;
         if (snCol) fd.append('sn_col', snCol);
@@ -1583,19 +1742,19 @@
         fd.append('cookie', cookie);
         fd.append('base_url', baseUrl);
         fd.append('file', file);
-        
+
         const snCol = document.getElementById('map-sn-devQueryFile')?.value;
         if (snCol) fd.append('sn_col', snCol);
 
         devQueryAbortController = new AbortController();
 
         try {
-            const resp = await fetch('/api/ccs/query-devices', { 
-                method: 'POST', 
+            const resp = await fetch('/api/ccs/query-devices', {
+                method: 'POST',
                 body: fd,
                 signal: devQueryAbortController.signal
             });
-            
+
             if (!resp.ok) {
                 const text = await resp.text();
                 throw new Error(text);
@@ -1608,16 +1767,16 @@
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                
+
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                
+
                 buffer = lines.pop(); // Keep incomplete tail
-                
+
                 for (const line of lines) {
                     if (!line.trim()) continue;
                     const event = JSON.parse(line);
-                    
+
                     if (event.type === 'progress') {
                         const pct = Math.round((event.current / event.total) * 100) || 0;
                         document.getElementById('devQueryProgressBar').style.width = pct + '%';
@@ -1663,7 +1822,7 @@
         fd.append('workspace_id', wsId);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
-        
+
         const snCol = document.getElementById('map-sn-unclaimFile')?.value;
         if (snCol) fd.append('sn_col', snCol);
 
@@ -1703,7 +1862,7 @@
         fd.append('folder', folder);
         fd.append('file', file);
         if (isDryRun) fd.append('dry_run', 'true');
-        
+
         const snCol = document.getElementById('map-sn-claimFile')?.value;
         if (snCol) fd.append('sn_col', snCol);
 
@@ -1792,12 +1951,12 @@
         delUserAbortController = new AbortController();
 
         try {
-            const resp = await fetch('/api/ccs/delete-users', { 
-                method: 'POST', 
+            const resp = await fetch('/api/ccs/delete-users', {
+                method: 'POST',
                 body: fd,
                 signal: delUserAbortController.signal
             });
-            
+
             if (!resp.ok) {
                 const text = await resp.text();
                 throw new Error(text);
@@ -1810,16 +1969,16 @@
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                
+
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                
+
                 buffer = lines.pop(); // Keep incomplete tail
-                
+
                 for (const line of lines) {
                     if (!line.trim()) continue;
                     const event = JSON.parse(line);
-                    
+
                     if (event.type === 'progress') {
                         const pct = Math.round((event.current / event.total) * 100) || 0;
                         document.getElementById('delUserProgressBar').style.width = pct + '%';
@@ -1850,11 +2009,11 @@
     async function auditCustomerApps() {
         const { bearer, cookie, baseUrl } = getSessionData();
         const searchFile = document.getElementById('auditSearchFile').files[0];
-        const refFile    = document.getElementById('auditRefFile').files[0];
+        const refFile = document.getElementById('auditRefFile').files[0];
 
-        if (!bearer)     { alert('Please enter a bearer token.'); return; }
+        if (!bearer) { alert('Please enter a bearer token.'); return; }
         if (!searchFile) { alert('Please select the Search Strings CSV (CSV 1).'); return; }
-        if (!refFile)    { alert('Please select the Reference App IDs CSV (CSV 2).'); return; }
+        if (!refFile) { alert('Please select the Reference App IDs CSV (CSV 2).'); return; }
 
         setLoader('auditLoader', true);
         setBtn('auditBtn', true);
@@ -1913,7 +2072,7 @@
         document.getElementById('statTotal').textContent = `Total: ${data.total}`;
         document.getElementById('statSuccess').textContent = `${data.successful}`;
         document.getElementById('statFail').textContent = `${data.failed}`;
-        
+
         if (data.elapsed_seconds !== undefined) {
             document.getElementById('statTime').textContent = `${data.elapsed_seconds}s`;
             document.getElementById('statTime').style.display = 'inline-block';
@@ -1923,6 +2082,16 @@
 
         const exportBtn = document.getElementById('exportCsvBtn');
         if (exportBtn) exportBtn.style.display = 'inline-block';
+
+        // Show Analyze button for device queries that have results
+        const ccsAnalyticsBtn = document.getElementById('ccsAnalyticsBtn');
+        if (ccsAnalyticsBtn) {
+            ccsAnalyticsBtn.style.display =
+                (currentResultsType === 'devices' && currentResults.length > 0) ? 'inline-block' : 'none';
+        }
+        // Reset analytics panel when new results load
+        const cap = document.getElementById('ccsAnalyticsPanel');
+        if (cap) cap.style.display = 'none';
 
         tbody.innerHTML = '';
         currentResults.forEach((item, i) => {
@@ -1944,6 +2113,226 @@
 
         section.classList.add('visible');
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ══ CCS AI Analytics ═══════════════════════════════════════════════════════
+
+    async function runCCSAnalytics() {
+        const panel   = document.getElementById('ccsAnalyticsPanel');
+        const loading = document.getElementById('ccsAnalyticsLoading');
+        const results = document.getElementById('ccsAnalyticsResults');
+
+        panel.style.display   = 'block';
+        loading.style.display = 'flex';
+        results.style.display = 'none';
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // Extract raw data from successful device query results
+        const rawItems = currentResults
+            .filter(r => r.success && r.raw && Object.keys(r.raw).length > 0)
+            .map(r => r.raw);
+
+        if (rawItems.length === 0) {
+            loading.style.display = 'none';
+            results.style.display = 'block';
+            document.getElementById('ccsStatCards').innerHTML =
+                '<div style="color:#71717a; padding:20px;">No enriched device data available. ' +
+                'Only devices successfully queried via <strong>Query Devices</strong> can be analyzed.</div>';
+            document.getElementById('ccsChartsGrid').innerHTML = '';
+            document.getElementById('ccsInsightsGrid').innerHTML = '';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/ccs/analytics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ results: rawItems, result_type: 'devices' })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+                throw new Error(err.detail || 'Analytics request failed');
+            }
+            const data = await res.json();
+            renderCCSAnalytics(data);
+        } catch(e) {
+            loading.style.display = 'none';
+            results.style.display = 'block';
+            document.getElementById('ccsStatCards').innerHTML =
+                `<div style="color:#ef4444;">⚠ ${e.message}</div>`;
+            document.getElementById('ccsChartsGrid').innerHTML = '';
+            document.getElementById('ccsInsightsGrid').innerHTML = '';
+        }
+    }
+
+    function renderCCSAnalytics(data) {
+        const loading = document.getElementById('ccsAnalyticsLoading');
+        const results = document.getElementById('ccsAnalyticsResults');
+        const ins     = data.insights || {};
+        const charts  = data.charts  || {};
+
+        // ── Stat Cards ──────────────────────────────────────────────────────
+        const hp = ins.health_pct !== undefined ? ins.health_pct : 0;
+        const hpColor = hp >= 80 ? '#10b981' : hp >= 50 ? '#f59e0b' : '#ef4444';
+        const statDefs = [
+            { label:'Total Queried',   value: ins.total_devices   ?? '—', color:'#3b82f6' },
+            { label:'Active',          value: ins.active_count    ?? '—', color:'#10b981' },
+            { label:'Inactive/Other',  value: ins.inactive_count  ?? '—', color:'#ef4444' },
+            { label:'Unique Models',   value: ins.unique_models   ?? '—', color:'#f59e0b' },
+            { label:'Workspaces',      value: ins.unique_workspaces ?? '—', color:'#8b5cf6' },
+            { label:'Fleet Health',    value: hp + '%',                    color: hpColor  },
+        ];
+        document.getElementById('ccsStatCards').innerHTML = statDefs.map(s => `
+            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+                        border-radius:12px; padding:16px; text-align:center; position:relative;
+                        overflow:hidden; transition:transform 0.2s;"
+                 onmouseover="this.style.transform='translateY(-3px)'"
+                 onmouseout="this.style.transform='translateY(0)'">
+                <div style="position:absolute;top:0;left:0;right:0;height:3px;
+                            background:${s.color};border-radius:12px 12px 0 0;"></div>
+                <div style="font-size:1.9rem;font-weight:800;color:#fafafa;line-height:1;">${s.value}</div>
+                <div style="font-size:0.7rem;color:#71717a;font-weight:500;text-transform:uppercase;
+                            letter-spacing:0.5px;margin-top:6px;">${s.label}</div>
+            </div>`).join('');
+
+        // ── Charts ──────────────────────────────────────────────────────────
+        const chartDefs = [
+            { key:'device_status',         title:'🟢 Device Status'            },
+            { key:'model_distribution',     title:'📊 Model Breakdown'          },
+            { key:'workspace_distribution', title:'🏢 Devices per Workspace'    },
+            { key:'folder_distribution',    title:'📁 Folder Distribution'      },
+        ];
+        document.getElementById('ccsChartsGrid').innerHTML = chartDefs.map(c => {
+            if (!charts[c.key]) return '';
+            return `
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);
+                        border-radius:14px; padding:16px; transition:border-color 0.2s;"
+                 onmouseover="this.style.borderColor='rgba(16,185,129,0.3)'"
+                 onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+                <div style="font-size:0.72rem;font-weight:600;color:#71717a;text-transform:uppercase;
+                            letter-spacing:0.8px;margin-bottom:10px;">${c.title}</div>
+                <img src="data:image/png;base64,${charts[c.key]}"
+                     style="width:100%;border-radius:8px;" loading="lazy">
+            </div>`;
+        }).join('');
+
+        // ── Smart Insights ──────────────────────────────────────────────────
+        const iList = [];
+        if (hp >= 80)
+            iList.push({ b:'#10b981', text:`<strong>Fleet is healthy (${hp}%).</strong> ${ins.active_count} of ${ins.total_devices} devices are active.` });
+        else if (hp >= 50)
+            iList.push({ b:'#f59e0b', text:`<strong>Moderate health (${hp}%).</strong> ${ins.inactive_count} devices are inactive or unknown.` });
+        else
+            iList.push({ b:'#ef4444', text:`<strong>⚠ Low activity (${hp}%).</strong> Only ${ins.active_count} of ${ins.total_devices} active. Investigate immediately.` });
+
+        if (ins.top_model && ins.top_model !== 'N/A')
+            iList.push({ b:'#3b82f6', text:`<strong>Top model:</strong> ${ins.top_model} — ${ins.unique_models} distinct type(s) across the fleet.` });
+
+        if (ins.unique_workspaces > 1)
+            iList.push({ b:'#8b5cf6', text:`<strong>${ins.unique_workspaces} workspaces</strong> covered. Highest device count in: <code style="font-size:0.82em;">${ins.top_workspace}</code>` });
+        else if (ins.top_workspace && ins.top_workspace !== 'N/A')
+            iList.push({ b:'#8b5cf6', text:`<strong>All devices in one workspace.</strong> ID: <code style="font-size:0.82em;">${ins.top_workspace}</code>` });
+
+        document.getElementById('ccsInsightsGrid').innerHTML = iList.map(i => `
+            <div style="background:rgba(255,255,255,0.03); border-left:3px solid ${i.b};
+                        border-radius:0 10px 10px 0; padding:12px 16px;
+                        font-size:0.85rem; color:#a1a1aa; line-height:1.55;">
+                ${i.text}
+            </div>`).join('');
+
+        // ── Workspace Breakdown Table ─────────────────────────────────────────
+        window._wsBreakdown = ins.workspace_breakdown || [];
+        renderWsTable(window._wsBreakdown);
+
+        // Clear search box from previous run
+        const wsi = document.getElementById('wsSearchInput');
+        if (wsi) wsi.value = '';
+
+        loading.style.display = 'none';
+        results.style.display = 'block';
+    }
+
+    function renderWsTable(rows) {
+        const container = document.getElementById('ccsWsTable');
+        if (!container) return;
+
+        if (!rows || rows.length === 0) {
+            container.innerHTML = '<div style="color:#71717a;padding:16px;text-align:center;font-size:0.85rem;">No workspace data available.</div>';
+            return;
+        }
+
+        const maxCount = rows[0].device_count || 1;
+        const totalDevices = rows.reduce((s, r) => s + r.device_count, 0);
+
+        // Copy all workspace IDs helper
+        const allIds = rows.map(r => r.workspace_id).join('\n');
+
+        const headerHtml = `
+            <div style="display:grid; grid-template-columns:1fr 100px 120px 40px;
+                        background:rgba(255,255,255,0.05); padding:10px 16px;
+                        font-size:0.72rem; font-weight:600; color:#71717a;
+                        text-transform:uppercase; letter-spacing:0.6px; border-bottom:1px solid rgba(255,255,255,0.08);">
+                <span>Workspace ID</span>
+                <span style="text-align:right;">Devices</span>
+                <span style="text-align:right; padding-right:8px;">Share %</span>
+                <span></span>
+            </div>`;
+
+        const rowsHtml = rows.map((r, idx) => {
+            const pct  = totalDevices ? ((r.device_count / totalDevices)*100).toFixed(1) : 0;
+            const barW = totalDevices ? ((r.device_count / maxCount)*100).toFixed(1) : 0;
+            const bg   = idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent';
+            return `
+            <div class="ws-row" data-wsid="${r.workspace_id.toLowerCase()}"
+                 style="display:grid; grid-template-columns:1fr 100px 120px 40px;
+                        align-items:center; padding:9px 16px; background:${bg};
+                        border-bottom:1px solid rgba(255,255,255,0.04);
+                        transition:background 0.15s;"
+                 onmouseover="this.style.background='rgba(139,92,246,0.08)'"
+                 onmouseout="this.style.background='${bg}'">
+                <span style="font-family:monospace; font-size:0.8rem; color:#e4e4e7;
+                             overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                      title="${r.workspace_id}">${r.workspace_id}</span>
+                <span style="text-align:right; font-weight:700; color:#fafafa; font-size:0.9rem;">${r.device_count}</span>
+                <div style="padding:0 8px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <div style="flex:1; height:5px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+                            <div style="width:${barW}%; height:100%; background:linear-gradient(90deg,#8b5cf6,#10b981); border-radius:3px;"></div>
+                        </div>
+                        <span style="font-size:0.72rem; color:#71717a; min-width:36px; text-align:right;">${pct}%</span>
+                    </div>
+                </div>
+                <div style="text-align:center;">
+                    <button onclick="navigator.clipboard.writeText('${r.workspace_id}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)})"
+                            style="background:none;border:none;color:#71717a;cursor:pointer;font-size:0.85rem;"
+                            title="Copy workspace ID">⎘</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        const footerHtml = `
+            <div style="display:flex; align-items:center; justify-content:space-between;
+                        padding:10px 16px; border-top:1px solid rgba(255,255,255,0.08);
+                        background:rgba(255,255,255,0.02);">
+                <span style="font-size:0.78rem; color:#71717a;">
+                    <strong style="color:#fafafa;">${rows.length}</strong> workspace(s) · <strong style="color:#fafafa;">${totalDevices}</strong> device(s) total
+                </span>
+                <button onclick="navigator.clipboard.writeText(${JSON.stringify(allIds)}).then(()=>{this.textContent='✓ Copied';setTimeout(()=>this.textContent='⎘ Copy All IDs',1500)})"
+                        style="background:rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.3);
+                               color:#a78bfa; border-radius:6px; padding:4px 12px;
+                               font-size:0.75rem; cursor:pointer; font-weight:600;">
+                    ⎘ Copy All IDs
+                </button>
+            </div>`;
+
+        container.innerHTML = headerHtml + rowsHtml + footerHtml;
+    }
+
+    function filterWsTable(query) {
+        const rows = window._wsBreakdown || [];
+        const q = query.trim().toLowerCase();
+        const filtered = q ? rows.filter(r => r.workspace_id.toLowerCase().includes(q)) : rows;
+        renderWsTable(filtered);
     }
 
     function exportResultsCsv() {
@@ -2203,7 +2592,7 @@
         const { bearer, cookie, baseUrl } = getSessionData();
         const file = document.getElementById(fileInputId)?.files[0];
         if (!bearer) { alert('Please enter a bearer token first.'); return; }
-        if (!file)   { alert('Please select a CSV file first.'); return; }
+        if (!file) { alert('Please select a CSV file first.'); return; }
 
         const btn = document.getElementById(btnId);
         if (btn) { btn.disabled = true; btn.textContent = 'Snapping...'; }
@@ -2242,7 +2631,7 @@
         const file = document.getElementById(fileInputId)?.files[0];
         const wsId = document.getElementById(wsInputId)?.value?.trim() || '';
         if (!bearer) { alert('Please enter a bearer token first.'); return; }
-        if (!file)   { alert('Please select a CSV file first.'); return; }
+        if (!file) { alert('Please select a CSV file first.'); return; }
 
         const btn = document.getElementById(btnId);
         if (btn) { btn.disabled = true; btn.textContent = 'Snapping...'; }
@@ -2277,14 +2666,14 @@
     }
 
 
-    
+
 
     function escHtml(str) {
         if (str == null) return '';
-        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    </script>
+</script>
 
 <!-- ── CSV Preview Modal ──────────────────────────────────────────── -->
 <div id="csvPreviewModal" role="dialog" aria-modal="true" aria-labelledby="csvPreviewTitle">

@@ -1,119 +1,273 @@
 {% extends "layout.html" %}
 
 {% block title %}Devices - GreenLake Dashboard{% endblock %}
-
 {% block page_title %}Device Management{% endblock %}
 
 {% block head %}
 <style>
-    .toolbar {
-        margin-bottom: 20px;
-        display: flex;
-        gap: 10px;
-    }
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.toolbar {
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
 
-    .device-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
+.btn-analytics {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #6c3de0 0%, #4cd137 100%);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 15px rgba(76, 209, 55, 0.25);
+}
+.btn-analytics:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(76, 209, 55, 0.4);
+}
+.btn-analytics .pulse {
+    width: 8px; height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    animation: pulseAnim 1.4s ease infinite;
+}
+@keyframes pulseAnim {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(1.4); }
+}
 
-    .device-table th,
-    .device-table td {
-        padding: 12px;
-        text-align: left;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
+/* ── Device Table ─────────────────────────────────────────────────────────── */
+.device-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.device-table th, .device-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.device-table th { background-color: rgba(255,255,255,0.05); }
+.device-table tr:hover { background-color: rgba(255,255,255,0.02); }
 
-    .device-table th {
-        background-color: rgba(255, 255, 255, 0.05);
-    }
+.badge { padding: 4px 8px; border-radius: 4px; font-size: 0.82em; font-weight: 600; }
+.badge-success { background: rgba(46,204,113,0.18); color: #2ecc71; }
+.badge-warning { background: rgba(241,196,15,0.18); color: #f1c40f; }
+.badge-danger  { background: rgba(231,76,60,0.18);  color: #e74c3c; }
 
-    .device-table tr:hover {
-        background-color: rgba(255, 255, 255, 0.02);
-    }
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+.toast {
+    visibility: hidden;
+    min-width: 250px;
+    background: #333; color: #fff;
+    text-align: center; border-radius: 4px; padding: 16px;
+    position: fixed; z-index: 1000;
+    left: 50%; bottom: 30px;
+    transform: translateX(-50%);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+@keyframes fadein  { from { bottom:0; opacity:0 } to { bottom:30px; opacity:1 } }
+@keyframes fadeout { from { bottom:30px; opacity:1 } to { bottom:0; opacity:0 } }
 
-    .badge {
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 0.85em;
-    }
+/* ── Analytics Panel ──────────────────────────────────────────────────────── */
+#analyticsPanel {
+    display: none;
+    margin-top: 28px;
+    animation: slideIn 0.4s ease;
+}
+@keyframes slideIn {
+    from { opacity:0; transform: translateY(20px); }
+    to   { opacity:1; transform: translateY(0); }
+}
 
-    .badge-success {
-        background-color: rgba(46, 204, 113, 0.2);
-        color: #2ecc71;
-    }
+.analytics-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.analytics-header h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #6c3de0, #4cd137);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+}
+.analytics-badge {
+    background: linear-gradient(135deg, #6c3de0, #4cd137);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+}
 
-    .badge-warning {
-        background-color: rgba(241, 196, 15, 0.2);
-        color: #f1c40f;
-    }
+/* Stat cards row */
+.stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+.stat-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    transition: transform 0.2s, border-color 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.stat-card::before {
+    content: '';
+    position: absolute; top:0; left:0; right:0;
+    height: 3px;
+    border-radius: 12px 12px 0 0;
+}
+.stat-card.green::before  { background: #4cd137; }
+.stat-card.red::before    { background: #e74c3c; }
+.stat-card.yellow::before { background: #f1c40f; }
+.stat-card.purple::before { background: #6c3de0; }
+.stat-card.blue::before   { background: #3498db; }
+.stat-card.orange::before { background: #e67e22; }
 
-    .badge-danger {
-        background-color: rgba(231, 76, 60, 0.2);
-        color: #e74c3c;
-    }
+.stat-card:hover { transform: translateY(-3px); border-color: rgba(76,209,55,0.3); }
+.stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #e0e3f0;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.stat-label {
+    font-size: 0.72rem;
+    color: #7f8598;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat-sub {
+    font-size: 0.68rem;
+    color: #4cd137;
+    margin-top: 4px;
+}
 
-    /* Toast Notification */
-    .toast {
-        visibility: hidden;
-        min-width: 250px;
-        background-color: #333;
-        color: #fff;
-        text-align: center;
-        border-radius: 4px;
-        padding: 16px;
-        position: fixed;
-        z-index: 1000;
-        left: 50%;
-        bottom: 30px;
-        transform: translateX(-50%);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
+/* Health score ring */
+.health-ring { position: relative; display: inline-block; }
+.health-ring svg { transform: rotate(-90deg); }
+.health-value {
+    position: absolute; top:50%; left:50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.1rem; font-weight: 800; color: #e0e3f0;
+}
 
-    .toast.show {
-        visibility: visible;
-        animation: fadein 0.5s, fadeout 0.5s 2.5s;
-    }
+/* Charts grid */
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-bottom: 24px;
+}
+@media (max-width: 900px) {
+    .charts-grid { grid-template-columns: 1fr; }
+}
 
-    @keyframes fadein {
-        from {
-            bottom: 0;
-            opacity: 0;
-        }
+.chart-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 16px;
+    transition: border-color 0.2s;
+}
+.chart-card:hover { border-color: rgba(76,209,55,0.25); }
+.chart-card img {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+}
+.chart-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #7f8598;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+}
 
-        to {
-            bottom: 30px;
-            opacity: 1;
-        }
-    }
+/* Insights text block */
+.insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+}
+.insight-item {
+    background: rgba(255,255,255,0.03);
+    border-left: 3px solid #4cd137;
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    color: #c0c4d8;
+    line-height: 1.5;
+}
+.insight-item.warn { border-left-color: #f1c40f; }
+.insight-item.crit { border-left-color: #e74c3c; }
+.insight-item strong { color: #e0e3f0; }
 
-    @keyframes fadeout {
-        from {
-            bottom: 30px;
-            opacity: 1;
-        }
+/* Loading spinner */
+.analytics-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px;
+}
+.spinner {
+    width: 48px; height: 48px;
+    border: 3px solid rgba(76,209,55,0.2);
+    border-top-color: #4cd137;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner-text { color: #7f8598; font-size: 0.9rem; }
 
-        to {
-            bottom: 0;
-            opacity: 0;
-        }
-    }
+/* Modal overrides */
+.modal { display: none; position: fixed; z-index: 999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); }
+.modal-content.glass { position: relative; margin: 10% auto; padding: 30px; width: 90%; max-width: 480px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card glass">
+    <!-- Toolbar -->
     <div class="toolbar">
         <button class="btn-primary" onclick="openAssignModal()">Assign to App</button>
-        <button class="btn-primary" onclick="unassignDevices()" style="background-color: #e67e22;">Unassign</button>
+        <button class="btn-primary" onclick="unassignDevices()" style="background-color:#e67e22;">Unassign</button>
         <button class="btn-primary" onclick="openSubModal()">Manage Subscription</button>
-        <button class="btn-primary" onclick="location.reload()" style="background-color: #34495e;">Refresh</button>
+        <button class="btn-primary" onclick="location.reload()" style="background-color:#34495e;">Refresh</button>
+        <button class="btn-analytics" id="analyticsBtn" onclick="runAnalytics()">
+            <span class="pulse"></span>
+            ✦ AI Analytics
+        </button>
     </div>
 
+    <!-- Device Table -->
     <table class="device-table">
         <thead>
             <tr>
-                <th style="width: 40px;"><input type="checkbox" id="selectAll"></th>
+                <th style="width:40px;"><input type="checkbox" id="selectAll"></th>
                 <th>Serial Number</th>
                 <th>MAC Address</th>
                 <th>Model</th>
@@ -127,8 +281,7 @@
         <tbody id="deviceTableBody">
             {% for device in devices %}
             <tr>
-                <td><input type="checkbox" class="device-checkbox" value="{{ device.serialNumber }}"
-                        data-id="{{ device.id }}"></td>
+                <td><input type="checkbox" class="device-checkbox" value="{{ device.serialNumber }}" data-id="{{ device.id }}" data-json='{{ device | tojson }}'></td>
                 <td>{{ device.serialNumber }}</td>
                 <td>{{ device.macAddress }}</td>
                 <td>{{ device.model }}</td>
@@ -136,14 +289,14 @@
                     {% if device.application %}
                     {{ device.application.name if device.application.name else device.application.id }}
                     {% else %}
-                    <span style="opacity: 0.5;">Unassigned</span>
+                    <span style="opacity:0.5;">Unassigned</span>
                     {% endif %}
                 </td>
                 <td>
                     {% if device.subscription %}
                     {% set status = device.subscription.calculatedStatus or 'Active' %}
                     <span class="badge {% if status == 'Active' %}badge-success{% else %}badge-danger{% endif %}"
-                        title="Status: {{ device.subscription.subscriptionStatus or device.subscription.status or 'N/A' }}{% if device.subscription.skuDescription %}&#10;Description: {{ device.subscription.skuDescription }}{% endif %}&#10;Tier: {{ device.subscription.tier }}">
+                          title="Status: {{ device.subscription.subscriptionStatus or device.subscription.status or 'N/A' }}&#10;Description: {{ device.subscription.skuDescription }}&#10;Tier: {{ device.subscription.tier }}">
                         {{ status }}
                     </span>
                     {% else %}
@@ -153,26 +306,56 @@
                 <td>
                     {% if device.subscription and device.subscription.startsAt %}
                     {{ device.subscription.startsAt | replace('T', ' ') | truncate(16, True, '') }}
-                    {% else %}
-                    -
-                    {% endif %}
+                    {% else %}-{% endif %}
                 </td>
                 <td>
                     {% if device.subscription and device.subscription.expiresAt %}
                     {{ device.subscription.expiresAt | replace('T', ' ') | truncate(16, True, '') }}
-                    {% else %}
-                    -
-                    {% endif %}
+                    {% else %}-{% endif %}
                 </td>
                 <td>{{ device.status }}</td>
             </tr>
             {% else %}
-            <tr>
-                <td colspan="7" style="text-align: center;">No devices found.</td>
-            </tr>
+            <tr><td colspan="9" style="text-align:center;">No devices found.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<!-- ══ AI Analytics Panel ════════════════════════════════════════════════════ -->
+<div id="analyticsPanel">
+    <div class="card glass">
+        <!-- Header -->
+        <div class="analytics-header">
+            <h3>⚡ AI Device Analytics</h3>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span class="analytics-badge">POWERED BY PANDAS · MATPLOTLIB</span>
+                <button onclick="document.getElementById('analyticsPanel').style.display='none'"
+                        style="background:none; border:none; color:#7f8598; font-size:1.3rem; cursor:pointer;">✕</button>
+            </div>
+        </div>
+
+        <!-- Loading state -->
+        <div id="analyticsLoading" class="analytics-loading" style="display:none;">
+            <div class="spinner"></div>
+            <span class="spinner-text">Crunching your device data…</span>
+        </div>
+
+        <!-- Results -->
+        <div id="analyticsResults" style="display:none;">
+            <!-- Stat Cards -->
+            <div class="stat-cards" id="statCards"></div>
+
+            <!-- Charts -->
+            <div class="charts-grid" id="chartsGrid"></div>
+
+            <!-- Insights -->
+            <div style="margin-bottom:12px; font-size:0.8rem; color:#7f8598; font-weight:600; text-transform:uppercase; letter-spacing:0.8px;">
+                ✦ Smart Insights
+            </div>
+            <div class="insights-grid" id="insightsGrid"></div>
+        </div>
+    </div>
 </div>
 
 <!-- Assign Modal -->
@@ -225,174 +408,254 @@
 </div>
 
 <div id="toast" class="toast">Action completed successfully</div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Select All Logic
-    document.getElementById('selectAll').addEventListener('change', function (e) {
-        document.querySelectorAll('.device-checkbox').forEach(cb => cb.checked = e.target.checked);
-    });
+// ── Global device data (server-side injected) ─────────────────────────────────
+const ALL_DEVICES = {{ devices | tojson }};
 
-    function getSelectedDevices() {
-        // Prefer Serial for most ops as per my backend assumptions, but let's send both or assume backend handles serials
-        // Backend router uses assign_devices(serial=False), so we need IDs.
-        // Wait, my backend implementation of assign_devices is `serial=False`. 
-        // PyCentral `get_all_devices` returns items with 'id' and 'serialNumber'.
-        // So I should use ID.
-        return Array.from(document.querySelectorAll('.device-checkbox:checked')).map(cb => cb.dataset.id);
-    }
+// ── Select All ────────────────────────────────────────────────────────────────
+document.getElementById('selectAll').addEventListener('change', function(e) {
+    document.querySelectorAll('.device-checkbox').forEach(cb => cb.checked = e.target.checked);
+});
 
-    function showToast(message) {
-        const x = document.getElementById("toast");
-        x.innerText = message;
-        x.className = "toast show";
-        setTimeout(function () { x.className = x.className.replace("show", ""); }, 3000);
-    }
+function getSelectedDevices() {
+    return Array.from(document.querySelectorAll('.device-checkbox:checked')).map(cb => cb.dataset.id);
+}
 
-    // Modal Functions
-    function closeModal(id) {
-        document.getElementById(id).style.display = 'none';
-    }
+function showToast(message) {
+    const x = document.getElementById("toast");
+    x.innerText = message;
+    x.className = "toast show";
+    setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
+}
 
-    async function openAssignModal() {
-        const devices = getSelectedDevices();
-        if (devices.length === 0) {
-            alert('Please select at least one device.');
-            return;
-        }
-        document.getElementById('assignModal').style.display = 'block';
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+}
 
-        // Fetch apps if empty
-        const select = document.getElementById('appSelect');
-        if (select.options.length <= 1) {
-            try {
-                const res = await fetch('/api/devices/apps');
-                if (!res.ok) throw new Error('Failed to load apps');
-                const apps = await res.json();
-                select.innerHTML = '<option value="">Select Application</option>';
-                apps.forEach(app => {
-                    select.innerHTML += `<option value="${app.id}">${app.name}</option>`;
-                });
-            } catch (e) {
-                console.error(e);
-                select.innerHTML = '<option value="">Error loading apps</option>';
-            }
-        }
-    }
-
-    function openSubModal() {
-        const devices = getSelectedDevices();
-        if (devices.length === 0) {
-            alert('Please select at least one device.');
-            return;
-        }
-        document.getElementById('subModal').style.display = 'block';
-    }
-
-    // Assign Submit
-    document.getElementById('assignForm').onsubmit = async (e) => {
-        e.preventDefault();
-        const devices = getSelectedDevices();
-        const appId = document.getElementById('appSelect').value;
-        const region = document.getElementById('regionSelect').value;
-
+// ── Assign Modal ──────────────────────────────────────────────────────────────
+async function openAssignModal() {
+    const devices = getSelectedDevices();
+    if (devices.length === 0) { alert('Please select at least one device.'); return; }
+    document.getElementById('assignModal').style.display = 'block';
+    const select = document.getElementById('appSelect');
+    if (select.options.length <= 1) {
         try {
-            const res = await fetch('/api/devices/assign', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    devices: devices,
-                    application_id: appId,
-                    region: region
-                })
+            const res = await fetch('/api/devices/apps');
+            if (!res.ok) throw new Error('Failed to load apps');
+            const apps = await res.json();
+            select.innerHTML = '<option value="">Select Application</option>';
+            apps.forEach(app => {
+                select.innerHTML += `<option value="${app.id}">${app.name}</option>`;
             });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || 'Assignment failed');
-            }
-            showToast('Devices assigned successfully!');
-            closeModal('assignModal');
-            setTimeout(() => location.reload(), 1500);
-        } catch (e) {
-            alert('Error: ' + e.message);
-        }
-    };
-
-    // Unassign
-    async function unassignDevices() {
-        const devices = getSelectedDevices();
-        if (devices.length === 0) {
-            alert('Please select at least one device.');
-            return;
-        }
-        if (!confirm(`Are you sure you want to unassign ${devices.length} devices?`)) return;
-
-        try {
-            const res = await fetch('/api/devices/unassign', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ devices: devices })
-            });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || 'Unassign failed');
-            }
-            showToast('Devices unassigned successfully!');
-            setTimeout(() => location.reload(), 1500);
-        } catch (e) {
-            alert('Error: ' + e.message);
+        } catch(e) {
+            select.innerHTML = '<option value="">Error loading apps</option>';
         }
     }
+}
 
-    // Sub Form Submit
-    document.getElementById('subForm').onsubmit = async (e) => {
-        e.preventDefault();
-        const devices = getSelectedDevices();
-        const action = document.getElementById('subAction').value;
-        const key = document.getElementById('subKey').value;
+function openSubModal() {
+    const devices = getSelectedDevices();
+    if (devices.length === 0) { alert('Please select at least one device.'); return; }
+    document.getElementById('subModal').style.display = 'block';
+}
 
-        if (action === 'add' && !key) {
-            alert('Subscription key is required for adding.');
+// ── Assign Form ───────────────────────────────────────────────────────────────
+document.getElementById('assignForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const devices = getSelectedDevices();
+    const appId   = document.getElementById('appSelect').value;
+    const region  = document.getElementById('regionSelect').value;
+    try {
+        const res = await fetch('/api/devices/assign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devices, application_id: appId, region })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Assignment failed'); }
+        showToast('Devices assigned successfully!');
+        closeModal('assignModal');
+        setTimeout(() => location.reload(), 1500);
+    } catch(e) { alert('Error: ' + e.message); }
+};
+
+// ── Unassign ──────────────────────────────────────────────────────────────────
+async function unassignDevices() {
+    const devices = getSelectedDevices();
+    if (devices.length === 0) { alert('Please select at least one device.'); return; }
+    if (!confirm(`Are you sure you want to unassign ${devices.length} devices?`)) return;
+    try {
+        const res = await fetch('/api/devices/unassign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devices })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Unassign failed'); }
+        showToast('Devices unassigned successfully!');
+        setTimeout(() => location.reload(), 1500);
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Sub Form ──────────────────────────────────────────────────────────────────
+document.getElementById('subForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const devices  = getSelectedDevices();
+    const action   = document.getElementById('subAction').value;
+    const key      = document.getElementById('subKey').value;
+    if (action === 'add' && !key) { alert('Subscription key is required for adding.'); return; }
+    const endpoint = action === 'add' ? '/api/devices/subscriptions/add' : '/api/devices/subscriptions/remove';
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devices, subscription_key: key })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Subscription update failed'); }
+        showToast('Subscription updated successfully!');
+        closeModal('subModal');
+        setTimeout(() => location.reload(), 1500);
+    } catch(e) { alert('Error: ' + e.message); }
+};
+
+document.getElementById('subAction').onchange = (e) => {
+    const group = document.getElementById('subKeyGroup');
+    group.style.display = e.target.value === 'add' ? 'block' : 'none';
+    document.getElementById('subKey').required = e.target.value === 'add';
+};
+
+window.onclick = (event) => {
+    if (event.target.classList.contains('modal')) event.target.style.display = 'none';
+};
+
+// ══ AI ANALYTICS ══════════════════════════════════════════════════════════════
+
+async function runAnalytics() {
+    const panel   = document.getElementById('analyticsPanel');
+    const loading = document.getElementById('analyticsLoading');
+    const results = document.getElementById('analyticsResults');
+
+    panel.style.display   = 'block';
+    loading.style.display = 'flex';
+    results.style.display = 'none';
+
+    // Scroll to panel
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+        const devicesToSend = ALL_DEVICES.length > 0 ? ALL_DEVICES : [];
+
+        if (devicesToSend.length === 0) {
+            loading.style.display = 'none';
+            results.style.display = 'block';
+            document.getElementById('statCards').innerHTML =
+                '<div style="color:#7f8598; font-size:0.9rem;">No device data available to analyze. Please ensure the GreenLake client is configured and devices are loaded.</div>';
             return;
         }
 
-        const endpoint = action === 'add' ? '/api/devices/subscriptions/add' : '/api/devices/subscriptions/remove';
+        const res = await fetch('/api/devices/analytics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devices: devicesToSend })
+        });
 
-        try {
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    devices: devices,
-                    subscription_key: key
-                })
-            });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || 'Subscription update failed');
-            }
-            showToast('Subscription updated successfully!');
-            closeModal('subModal');
-            setTimeout(() => location.reload(), 1500);
-        } catch (e) {
-            alert('Error: ' + e.message);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Analytics failed');
         }
-    };
 
-    // Toggle Sub Key Input
-    document.getElementById('subAction').onchange = (e) => {
-        const group = document.getElementById('subKeyGroup');
-        group.style.display = e.target.value === 'add' ? 'block' : 'none';
-        document.getElementById('subKey').required = e.target.value === 'add';
-    };
+        const data = await res.json();
+        renderAnalytics(data);
 
-    // Close modal on click outside
-    window.onclick = (event) => {
-        if (event.target.classList.contains('modal')) {
-            event.target.style.display = 'none';
-        }
+    } catch(e) {
+        loading.style.display = 'none';
+        results.style.display = 'block';
+        document.getElementById('statCards').innerHTML =
+            `<div style="color:#e74c3c; font-size:0.9rem;">⚠ Analytics error: ${e.message}</div>`;
     }
+}
+
+function renderAnalytics(data) {
+    const loading = document.getElementById('analyticsLoading');
+    const results = document.getElementById('analyticsResults');
+    const ins = data.insights;
+    const charts = data.charts;
+
+    // ── Stat Cards ────────────────────────────────────────────────────────────
+    const healthColor = ins.health_score >= 80 ? '#4cd137' : ins.health_score >= 50 ? '#f1c40f' : '#e74c3c';
+    const statCards = [
+        { label: 'Total Devices',    value: ins.total_devices,  sub: `${ins.unique_models} model types`,  cls: 'blue'   },
+        { label: 'Active Subs',      value: ins.active_subs,    sub: `${ins.health_score}% subscription health`, cls: 'green'  },
+        { label: 'Expired Subs',     value: ins.expired_subs,   sub: 'Needs renewal',                     cls: 'red'    },
+        { label: 'No Subscription',  value: ins.no_sub,         sub: 'Unlicensed devices',                cls: 'yellow' },
+        { label: 'Expiring in 30d',  value: ins.expiring_30d,   sub: 'Action required soon',              cls: 'orange' },
+        { label: 'Unassigned',       value: ins.unassigned,     sub: 'Not assigned to an app',            cls: 'purple' },
+    ];
+
+    document.getElementById('statCards').innerHTML = statCards.map(s => `
+        <div class="stat-card ${s.cls}">
+            <div class="stat-value">${s.value}</div>
+            <div class="stat-label">${s.label}</div>
+            <div class="stat-sub">${s.sub}</div>
+        </div>
+    `).join('');
+
+    // ── Charts Grid ────────────────────────────────────────────────────────────
+    const chartDefs = [
+        { key: 'subscription_status', title: '🟢 Subscription Status Distribution' },
+        { key: 'model_distribution',  title: '📊 Device Model Breakdown'           },
+        { key: 'tier_breakdown',      title: '🏷 Subscription Tier Analysis'        },
+        { key: 'expiry_timeline',     title: '📅 Subscription Expiry Timeline'      },
+    ];
+
+    document.getElementById('chartsGrid').innerHTML = chartDefs.map(c => `
+        <div class="chart-card">
+            <div class="chart-title">${c.title}</div>
+            <img src="data:image/png;base64,${charts[c.key]}" alt="${c.title}" loading="lazy">
+        </div>
+    `).join('');
+
+    // ── Smart Insights ─────────────────────────────────────────────────────────
+    const insights = [];
+
+    // Health
+    if (ins.health_score >= 80) {
+        insights.push({ cls: '', text: `<strong>Fleet is healthy.</strong> ${ins.health_score}% of devices have active subscriptions. Good job maintaining licensing compliance.` });
+    } else if (ins.health_score >= 50) {
+        insights.push({ cls: 'warn', text: `<strong>Moderate subscription health (${ins.health_score}%).</strong> Consider renewing ${ins.expired_subs} expired subscriptions to maintain service continuity.` });
+    } else {
+        insights.push({ cls: 'crit', text: `<strong>⚠ Low subscription coverage (${ins.health_score}%).</strong> ${ins.expired_subs} expired + ${ins.no_sub} unlicensed devices detected. Immediate action recommended.` });
+    }
+
+    // Expiring soon
+    if (ins.expiring_30d > 0) {
+        insights.push({ cls: 'warn', text: `<strong>${ins.expiring_30d} subscription(s) expiring within 30 days.</strong> Initiate renewal conversations now to avoid service disruption.` });
+    } else {
+        insights.push({ cls: '', text: `<strong>No subscriptions expiring in the next 30 days.</strong> Your upcoming renewals are in good shape.` });
+    }
+
+    // Unassigned
+    if (ins.unassigned > 0) {
+        insights.push({ cls: 'warn', text: `<strong>${ins.unassigned} device(s) are unassigned.</strong> These devices are not linked to any application. Use the Assign feature to onboard them.` });
+    } else {
+        insights.push({ cls: '', text: `<strong>All devices are assigned</strong> to applications. Full operational coverage achieved.` });
+    }
+
+    // Top model
+    insights.push({ cls: '', text: `<strong>Most common device model:</strong> ${ins.top_model}. You have <strong>${ins.unique_models}</strong> distinct model type(s) across your fleet.` });
+
+    // Tier
+    if (ins.top_tier && ins.top_tier !== 'N/A') {
+        insights.push({ cls: '', text: `<strong>Dominant subscription tier:</strong> ${ins.top_tier}. Review if this tier meets evolving service requirements across your fleet.` });
+    }
+
+    document.getElementById('insightsGrid').innerHTML = insights.map(i =>
+        `<div class="insight-item ${i.cls}">${i.text}</div>`
+    ).join('');
+
+    loading.style.display = 'none';
+    results.style.display = 'block';
+}
 </script>
 {% endblock %}

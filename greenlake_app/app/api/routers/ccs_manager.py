@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
+from pydantic import BaseModel
 import csv
 import io
+import base64
 import time
 import json
 import requests
@@ -19,10 +21,162 @@ API_BASE = "https://global.api.greenlake.hpe.com"
 AQUILA_BASE = "https://aquila-user-api.common.cloud.hpe.com"
 
 
+# ============================================================
+# CCS ANALYTICS  (no GreenLake auth required)
+# ============================================================
+
+class CCSAnalyticsRequest(BaseModel):
+    results: List[Dict[str, Any]]  # list of item.raw objects from query-devices
+    result_type: str = "devices"
+
+
+def _ccs_fig_to_b64(fig) -> str:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=130,
+                facecolor=fig.get_facecolor())
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
+
+
+@router.post("/analytics")
+async def ccs_analytics(payload: CCSAnalyticsRequest):
+    """Generate charts and insights from CCS query-devices results."""
+    try:
+        import pandas as pd
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+
+        items = payload.results
+        if not items:
+            raise HTTPException(status_code=400, detail="No result data provided")
+
+        BG      = "#09090b"
+        CARD    = "#18181b"
+        PALETTE = ["#10b981","#3b82f6","#f59e0b","#ef4444","#8b5cf6",
+                   "#ec4899","#06b6d4","#84cc16"]
+
+        plt.rcParams.update({
+            "figure.facecolor": BG, "axes.facecolor": CARD,
+            "axes.edgecolor": "#27272a", "axes.labelcolor": "#a1a1aa",
+            "xtick.color": "#71717a", "ytick.color": "#71717a",
+            "text.color": "#fafafa", "grid.color": "#27272a",
+            "grid.linestyle": "--", "grid.alpha": 0.5,
+            "font.family": "DejaVu Sans", "font.size": 9,
+        })
+
+        df = pd.DataFrame(items)
+        charts = {}
+
+        model_col  = next((c for c in ["device_model","model","part_number"] if c in df.columns), None)
+        status_col = next((c for c in ["status","device_status"] if c in df.columns), None)
+        ws_col     = next((c for c in ["workspace_id","platform_customer_id","pcid"] if c in df.columns), None)
+        folder_col = next((c for c in ["folder_name","folder"] if c in df.columns), None)
+        total = len(df)
+
+        # Chart 1 – Device Status donut
+        fig1, ax1 = plt.subplots(figsize=(5, 4.5), facecolor=BG)
+        stat_counts = df[status_col].fillna("Unknown").value_counts() if status_col else pd.Series({"Unknown": total})
+        sc_map = {"ACTIVE":"#10b981","INACTIVE":"#ef4444","ASSIGNED":"#3b82f6","UNASSIGNED":"#f59e0b","Unknown":"#71717a"}
+        c1 = [sc_map.get(str(s).upper(), "#8b5cf6") for s in stat_counts.index]
+        _, _, autos = ax1.pie(stat_counts.values, labels=None, autopct="%1.1f%%",
+                              colors=c1, startangle=140, pctdistance=0.75,
+                              wedgeprops={"linewidth":2,"edgecolor":BG,"width":0.55})
+        for a in autos: a.set_fontsize(8); a.set_color("#fafafa")
+        leg = ax1.legend(handles=[mpatches.Patch(color=c,label=l) for c,l in zip(c1,stat_counts.index)],
+                         loc="lower center",bbox_to_anchor=(0.5,-0.12),ncol=min(3,len(stat_counts)),
+                         frameon=False,prop={"size":8})
+        for t in leg.get_texts(): t.set_color("#a1a1aa")
+        ax1.text(0,0,str(total),ha="center",va="center",fontsize=20,fontweight="bold",color="#fafafa")
+        ax1.text(0,-0.2,"devices",ha="center",va="center",fontsize=8,color="#71717a")
+        ax1.set_title("Device Status",color="#fafafa",fontsize=11,fontweight="bold",pad=10)
+        fig1.tight_layout(); charts["device_status"] = _ccs_fig_to_b64(fig1); plt.close(fig1)
+
+        # Chart 2 – Model distribution
+        fig2, ax2 = plt.subplots(figsize=(6, 4.5), facecolor=BG)
+        mc = df[model_col].fillna("Unknown").value_counts().head(10) if model_col else pd.Series({"N/A":total})
+        bc = [PALETTE[i%len(PALETTE)] for i in range(len(mc))]
+        bars = ax2.barh(mc.index[::-1], mc.values[::-1], color=bc[::-1], height=0.6)
+        for bar,val in zip(bars,mc.values[::-1]):
+            ax2.text(bar.get_width()+0.05,bar.get_y()+bar.get_height()/2,
+                     str(val),va="center",ha="left",fontsize=8,color="#a1a1aa")
+        ax2.set_xlabel("Count",color="#a1a1aa")
+        ax2.set_title("Device Models (Top 10)",color="#fafafa",fontsize=11,fontweight="bold")
+        ax2.grid(axis="x"); ax2.tick_params(axis="y",labelsize=8)
+        fig2.tight_layout(); charts["model_distribution"] = _ccs_fig_to_b64(fig2); plt.close(fig2)
+
+        # Chart 3 – Workspace distribution
+        fig3, ax3 = plt.subplots(figsize=(6, 4.5), facecolor=BG)
+        if ws_col and ws_col in df.columns:
+            wc = df[ws_col].fillna("Unknown").value_counts().head(10)
+            wlabels = [str(w)[:20]+"\u2026" if len(str(w))>20 else str(w) for w in wc.index]
+        else:
+            wc = pd.Series({"N/A":total}); wlabels = ["N/A"]
+        wcc = [PALETTE[i%len(PALETTE)] for i in range(len(wc))]
+        ax3.barh(wlabels[::-1],wc.values[::-1],color=wcc[::-1],height=0.6)
+        ax3.set_xlabel("Devices",color="#a1a1aa")
+        ax3.set_title("Devices per Workspace (Top 10)",color="#fafafa",fontsize=11,fontweight="bold")
+        ax3.grid(axis="x"); ax3.tick_params(axis="y",labelsize=7)
+        fig3.tight_layout(); charts["workspace_distribution"] = _ccs_fig_to_b64(fig3); plt.close(fig3)
+
+        # Chart 4 – Folder distribution donut
+        fig4, ax4 = plt.subplots(figsize=(5, 4.5), facecolor=BG)
+        fc_data = df[folder_col].fillna("default").value_counts() if folder_col else pd.Series({"default":total})
+        fc = [PALETTE[i%len(PALETTE)] for i in range(len(fc_data))]
+        _, _, a4 = ax4.pie(fc_data.values,labels=None,autopct="%1.1f%%",colors=fc,
+                           startangle=90,pctdistance=0.78,wedgeprops={"linewidth":2,"edgecolor":BG,"width":0.5})
+        for a in a4: a.set_fontsize(8); a.set_color("#fafafa")
+        leg4 = ax4.legend(handles=[mpatches.Patch(color=c,label=l) for c,l in zip(fc,fc_data.index)],
+                          loc="lower center",bbox_to_anchor=(0.5,-0.14),ncol=min(3,len(fc_data)),
+                          frameon=False,prop={"size":8})
+        for t in leg4.get_texts(): t.set_color("#a1a1aa")
+        ax4.set_title("Folder Distribution",color="#fafafa",fontsize=11,fontweight="bold",pad=10)
+        fig4.tight_layout(); charts["folder_distribution"] = _ccs_fig_to_b64(fig4); plt.close(fig4)
+
+        # Insights
+        active_count  = int((df[status_col].str.upper()=="ACTIVE").sum()) if status_col and status_col in df.columns else 0
+        top_model     = str(mc.index[0]) if model_col and not mc.empty else "N/A"
+        top_ws        = str(wc.index[0])[:40] if ws_col and ws_col in df.columns and not wc.empty else "N/A"
+        unique_ws     = int(df[ws_col].nunique()) if ws_col and ws_col in df.columns else 0
+        unique_models = int(df[model_col].nunique()) if model_col and model_col in df.columns else 0
+
+        # Full workspace breakdown (all workspaces, sorted by device count desc)
+        if ws_col and ws_col in df.columns:
+            ws_full = df[ws_col].fillna("Unknown").value_counts()
+            workspace_breakdown = [
+                {"workspace_id": str(ws_id), "device_count": int(cnt)}
+                for ws_id, cnt in ws_full.items()
+            ]
+        else:
+            workspace_breakdown = []
+
+        insights = {
+            "total_devices":      total,
+            "active_count":       active_count,
+            "inactive_count":     total - active_count,
+            "top_model":          top_model,
+            "unique_models":      unique_models,
+            "unique_workspaces":  unique_ws,
+            "top_workspace":      top_ws,
+            "health_pct":         round(active_count/total*100,1) if total else 0,
+            "workspace_breakdown": workspace_breakdown,
+        }
+
+        return {"charts": charts, "insights": insights, "result_type": payload.result_type}
+
+
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Analytics libs missing: {e}. Run: pip install pandas matplotlib")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analytics error: {e}")
+
 
 # ============================================================
 # HELPERS
 # ============================================================
+
 
 def is_aquila_url(base_url: str) -> bool:
     """True if the base URL is the aquila-user-api domain (NOT the frontend portal)."""
@@ -515,6 +669,15 @@ async def ccs_transfer_devices(
     # ── Audit log ─────────────────────────────────────────
     try:
         _au = _get_session_user(request)
+        
+        # Build rollback payload to transfer back to original workspaces
+        rb_devices = []
+        for d in results.get("details", []):
+            if d.get("success") and "Would" not in d.get("status", ""):
+                rb_devices.append({"serial": d["serial"], "workspace_id": source_workspace_id})
+        
+        rollback_payload = {"action": "transfer_devices", "devices": rb_devices} if rb_devices else None
+
         log_operation(
             user=_au, operation="Transfer Devices",
             endpoint="/api/ccs/transfer-devices",
@@ -522,67 +685,8 @@ async def ccs_transfer_devices(
             input_rows=len(serials),
             workspace=dest_workspace_id,
             total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
-
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Bulk Move Devices",
-            endpoint="/api/ccs/bulk-move-devices",
-            dry_run=False,
-            input_rows=len(rows),
-            workspace='',
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
-
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Transfer Subscriptions",
-            endpoint="/api/ccs/transfer-subscriptions",
-            dry_run=False,
-            input_rows=len(keys),
-            workspace=dest_workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
-
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Unclaim Devices",
-            endpoint="/api/ccs/unclaim-devices",
-            dry_run=False,
-            input_rows=len(serials),
-            workspace=workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
-        )
-    except Exception as _ae:
-        print(f'Audit log error: {_ae}')
-
-    # ── Audit log ─────────────────────────────────────────
-    try:
-        _au = _get_session_user(request)
-        log_operation(
-            user=_au, operation="Claim Devices",
-            endpoint="/api/ccs/claim-devices",
-            dry_run=False,
-            input_rows=len(serials),
-            workspace=workspace_id,
-            total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
+            failed=results.get('failed'), status='ok',
+            rollback_data=json.dumps(rollback_payload) if rollback_payload else None
         )
     except Exception as _ae:
         print(f'Audit log error: {_ae}')
@@ -1148,6 +1252,14 @@ async def ccs_transfer_subscriptions(
     # ── Audit log ─────────────────────────────────────────
     try:
         _au = _get_session_user(request)
+        
+        rb_subs = []
+        for d in results.get("details", []):
+            if d.get("success") and "Would" not in d.get("status", ""):
+                rb_subs.append({"key": d["key"], "workspace_id": source_workspace_id})
+                    
+        rollback_payload = {"action": "transfer_subscriptions", "subscriptions": rb_subs} if rb_subs else None
+
         log_operation(
             user=_au, operation="Transfer Subscriptions",
             endpoint="/api/ccs/transfer-subscriptions",
@@ -1155,7 +1267,8 @@ async def ccs_transfer_subscriptions(
             input_rows=len(keys),
             workspace=dest_workspace_id,
             total=results.get('total'), success=results.get('successful'),
-            failed=results.get('failed'), status='ok'
+            failed=results.get('failed'), status='ok',
+            rollback_data=json.dumps(rollback_payload) if rollback_payload else None
         )
     except Exception as _ae:
         print(f'Audit log error: {_ae}')
@@ -2748,11 +2861,13 @@ async def ccs_delete_users(
             rb_users = []
             for d in results["details"]:
                 if d.get("success") and "Skipped" not in d.get("status", "") and "Would" not in d.get("status", ""):
-                    wid_str = d.get("detail", "").split()[-1].strip("()")
-                    if wid_str:
+                    # In Delete Users, d["detail"] might be "User deleted successfully (wid)"
+                    wid_str = d.get("detail", "").split("(")[-1].strip(")") if "(" in d.get("detail", "") else d.get("detail", "").split()[-1]
+                    if wid_str and len(wid_str) > 10:
                         rb_users.append({"username": d["key"], "workspace_id": wid_str})
             
             rollback_payload = {"action": "invite_user", "users": rb_users} if not dry_run and rb_users else None
+
 
             log_operation(
                 user=_au, operation="Delete Users",
@@ -2878,6 +2993,95 @@ async def ccs_rollback_operation(
                 results["details"].append({"serial": username, "success": False, "error": str(e)})
             time.sleep(0.3)
             
+    elif action == "transfer_devices":
+        devices = payload.get("devices", [])
+        results["total"] = len(devices)
+        
+        use_aquila = is_aquila_url(base_url)
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for d in devices:
+            if d.get("workspace_id") and d.get("serial"):
+                grouped[d["workspace_id"]].append(d["serial"])
+                
+        for orig_wid, serials in grouped.items():
+            if use_aquila:
+                endpoint = f"{base_url}/support-assistant/v1alpha1/devices-to-customer"
+                batch_payload = {"platform_customer_id": orig_wid}
+                for i in range(0, len(serials), 250):
+                    batch = serials[i:i+250]
+                    _transfer_batch_with_retry(headers, endpoint, batch_payload, batch, results)
+                    time.sleep(1.0)
+            else:
+                for serial in serials:
+                    device_id = get_device_id_by_serial(bearer_token, cookie, serial, base_url)
+                    if not device_id:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": "Device not found"})
+                        continue
+                    try:
+                        patch_url = f"{base_url}/devices/v1beta1/devices"
+                        patch_headers = make_headers(bearer_token, cookie, "application/merge-patch+json", base_url)
+                        resp = requests.patch(
+                            patch_url, headers=patch_headers, params={"id": device_id}, 
+                            json={"workspace": {"id": orig_wid}}, timeout=30
+                        )
+                        if resp.status_code in [200, 202]:
+                            results["successful"] += 1
+                            results["details"].append({"serial": serial, "success": True, "status": f"Reverted to {orig_wid}"})
+                        else:
+                            results["failed"] += 1
+                            results["details"].append({"serial": serial, "success": False, "error": f"HTTP {resp.status_code}"})
+                    except Exception as e:
+                        results["failed"] += 1
+                        results["details"].append({"serial": serial, "success": False, "error": str(e)})
+
+    elif action == "transfer_subscriptions":
+        subs = payload.get("subscriptions", [])
+        results["total"] = len(subs)
+        
+        for s in subs:
+            key = s.get("key")
+            orig_wid = s.get("workspace_id")
+            
+            subs_base_url = f"{base_url}/subscriptions/v1/subscriptions"
+            sub_id = None
+            try:
+                resp = requests.get(
+                    subs_base_url, headers=headers,
+                    params={"filter": f"key eq '{key}'", "limit": 5}, timeout=30
+                )
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    if items:
+                        sub_id = items[0].get("id")
+            except Exception as e:
+                print(f"[CCS] Rollback Sub lookup error: {e}")
+
+            if not sub_id:
+                results["failed"] += 1
+                results["details"].append({"key": key, "success": False, "error": "Subscription key not found"})
+                continue
+                
+            try:
+                transfer_url = f"{subs_base_url}/{sub_id}/transfer"
+                resp = requests.put(transfer_url, headers=headers, json={"platformCustomerId": orig_wid}, timeout=30)
+                if resp.status_code == 405:
+                    resp = requests.patch(transfer_url, headers=headers, json={"platformCustomerId": orig_wid}, timeout=30)
+
+                if resp.status_code in [200, 201, 204]:
+                    results["successful"] += 1
+                    results["details"].append({"key": key, "success": True, "status": f"Reverted to {orig_wid}"})
+                elif resp.status_code == 202:
+                    results["successful"] += 1
+                    results["details"].append({"key": key, "success": True, "status": "Processing"})
+                else:
+                    results["failed"] += 1
+                    results["details"].append({"key": key, "success": False, "error": f"HTTP {resp.status_code}"})
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({"key": key, "success": False, "error": str(e)})
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown rollback action: {action}")
 

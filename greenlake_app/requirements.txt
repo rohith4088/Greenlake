@@ -14,3 +14,7 @@ httpx
 redis
 passlib[bcrypt]
 itsdangerous
+pandas
+matplotlib
+seaborn
+numpy
